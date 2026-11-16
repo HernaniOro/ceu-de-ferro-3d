@@ -1,0 +1,35 @@
+'use strict';
+/* the relay server: the class trn, the sniper kits and the messages board, seats, eject and cargo */
+const N = require('./net'), { ok, done } = require('./harness');
+(async () => {
+  await N.start(); console.log('server: ' + N.SERVER);
+  const join = async (cls, model, room) => { const c = await N.raw(); c.send({ t: 'join', room: room || 'modern', name: cls, cls, model }); c.w = await c.wait('welcome', 800); c.err = c.w ? null : await c.wait('error', 300); c.id = c.w && c.w.id; return c; };
+  const none = async (c, t) => !(await c.wait(t, 150));
+  const h = await join('tank', 'abrams'), tr = await join('trn', 'hemtt'), lav = await join('trn', 'btr82'), a = await join('inf', 'blueSniper'), b = await join('inf', 'redRifle'), bad = await join('trn', 'kubel'), old = await join('trn', 'jeep', 'ww2'), s44 = await join('inf', 'scharf', 'ww2');
+  ok(h.w && h.w.trn === 1, 'welcome says trn: 1');
+  ok(tr.w && lav.w && a.w && old.w && s44.w && !bad.w && bad.err.code === 'model', 'a truck, a LAV and a sniper join their era\'s room; a Kübelwagen is refused in the modern one');
+  tr.send({ t: 'gstate', p: [1, 2, 3], a: [0, 0, 0], v: [0, 0, 0], hp: 30, d: 0, f: 0 }); const gs = await h.wait('gstate'); ok(gs && gs.from === tr.id, 'a transport\'s gstate is relayed');
+  lav.send({ t: 'smoke', p: [1, 2, 3] }); ok(!!(await h.wait('smoke')), 'and its smoke');
+  tr.send({ t: 'swap', cls: 'trn', model: 'lav25' }); const sw = await h.wait('swap'); await tr.wait('swap'); ok(sw && sw.model === 'lav25' && !sw.no, 'swap within the class');
+  tr.send({ t: 'swap', cls: 'trn', model: 'btr82' }); const no = await tr.wait('swap'); ok(no && no.no === 1 && no.model === 'lav25', 'a swap to the other side\'s is refused');
+  a.send({ t: 'board', v: tr.id, s: 0 }); const bd = await tr.wait('board'); ok(bd && bd.from === a.id && bd.v === tr.id && bd.s === 0 && (await none(h, 'board')), 'board for a player\'s vehicle goes to that player alone');
+  a.send({ t: 'board', v: -7, s: -1 }); const bh = await h.wait('board'); ok(bh && bh.v === -7 && bh.s === -1, 'board for an AI vehicle goes to the host');
+  a.send({ t: 'board', v: h.id, s: 0 }); a.send({ t: 'board', v: tr.id, s: 3 }); a.send({ t: 'board', v: 999, s: 0 }); tr.send({ t: 'board', v: lav.id, s: 0 });
+  ok((await none(h, 'board')) && (await none(tr, 'board')) && (await none(lav, 'board')), 'refused: a vehicle that is no transport, a seat number, an unknown player, a sender that is no soldier');
+  tr.send({ t: 'seats', e: [[tr.id, -1, 0, a.id, 0]] }); const st = await b.wait('seats'); ok(st && st.from === tr.id && st.e[0][3] === a.id, 'seats from a transport\'s player, about its own vehicle, reach the room');
+  h.send({ t: 'seats', e: [[-3, 5, 0, a.id], [tr.id, 4]] }); const sh = await b.wait('seats'); ok(sh && sh.from === h.id && sh.e.length === 2, 'the host speaks for the AI\'s vehicles and for the boxed squads of all');
+  tr.send({ t: 'seats', e: [[lav.id, 0, a.id]] }); tr.send({ t: 'seats', e: [[-3, 2]] }); a.send({ t: 'seats', e: [[a.id, 0]] }); tr.send({ t: 'seats', e: [[tr.id, 99]] }); tr.send({ t: 'seats', e: [[tr.id, 0, 'x']] });
+  ok(await none(b, 'seats'), 'refused: another player\'s vehicle, an AI\'s from a guest, a soldier\'s, a count out of range, a seat that is no player');
+  tr.send({ t: 'eject', to: a.id, dmg: 12.5, by: lav.id }); const ej = await a.wait('eject'); ok(ej && ej.from === tr.id && ej.dmg === 12.5 && ej.by === lav.id && (await none(b, 'eject')), 'eject goes to the one aboard, with who did it');
+  h.send({ t: 'eject', to: a.id, dmg: 0, by: null }); ok(!!(await a.wait('eject')), 'and from the host');
+  a.send({ t: 'eject', to: b.id, dmg: 5, by: null }); tr.send({ t: 'eject', to: lav.id, dmg: 5, by: null }); tr.send({ t: 'eject', to: a.id, dmg: -1, by: null });
+  ok((await none(b, 'eject')) && (await none(lav, 'eject')) && (await none(a, 'eject')), 'refused: from a soldier, to a vehicle, a negative damage');
+  tr.send({ t: 'cargo', k: 1 }); const cg = await h.wait('cargo'); ok(cg && cg.from === tr.id && cg.k === 1, 'cargo from a guest\'s transport goes to the host');
+  a.send({ t: 'cargo', k: 1 }); tr.send({ t: 'cargo', k: 2 }); ok(await none(h, 'cargo'), 'refused: from a soldier, an unknown request');
+  const row = m => [-5, m, 0, 30, 16, 1, 2, 3, 0, 0, 0, 0, 0, 0];
+  h.send({ t: 'ai', k: 1, e: [row('truck'), row('hmmwv'), row('btr82')] }); const ai = await a.wait('ai'); ok(ai && ai.e.length === 3, 'AI rows of a car and a LAV pass');
+  h.send({ t: 'ai', k: 1, e: [row('kubel')] }); ok(await none(a, 'ai'), 'one of the other era does not');
+  h.send({ t: 'ai', k: 2, e: [[-9, 9, 1, 22, 0, 1, 2, 0, 2]] }); const am = await a.wait('ai'); ok(am && am.k === 2, 'a soldier\'s row with a sniper\'s kit index (9 of 10) passes');
+  h.send({ t: 'aidown', id: -5, by: lav.id, model: 'lav25', det: 0 }); const ad = await a.wait('aidown'); ok(ad && ad.model === 'lav25', 'aidown of a LAV, credited to a player');
+  for (const c of [h, tr, lav, a, b, old, s44]) c.close(); N.stop(); done();
+})().catch(e => { console.error(e); N.stop(); process.exit(1); });

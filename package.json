@@ -1,0 +1,13 @@
+{
+  "name": "ceu-de-ferro-3d",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Servidor do Céu de Ferro 3D: entrega a página e retransmite as mensagens do PvP online.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  }
+}

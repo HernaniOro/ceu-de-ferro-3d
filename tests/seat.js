@@ -1,9 +1,10 @@
 'use strict';
 /* Map version 5: the seat town beside each main base (CITY.plan.seat) and its lots, and the economy's sites on them: set there by the
-   AI and by a click inside a lot, a fixed AA on the square, and disguised (ECO.lot): a plain building to the other side until an enemy
-   on the ground sees it within 400 m, or a reconnaissance drone or team passes over it; until then it is not spotted, not remembered,
-   not in ecoFoe and not a target. A guest is told in the eco row. Map version 4 is planned as before. BEFORE=<page> compares version 4
-   with another copy of the page (default: the page at git HEAD, skipped when git is missing). PAGE=<page> */
+   AI and by a click inside a lot, a fixed AA on the square or on a roof, a supply base on the depot lot, and disguised (ECO.lot): a plain
+   building to the other side until an enemy on the ground or in the air sees it within 400 m, or a reconnaissance drone or team passes
+   over it; until then it is not spotted, not remembered, not in ecoFoe and not a target. A guest is told in the eco row. Map version 4
+   is planned as before. BEFORE=<page> compares version 4 with another copy of the page (default: the page at commit 71157f5, the last
+   one before map version 5; skipped when git is missing). PAGE=<page> */
 const fs = require('fs'), os = require('os'), path = require('path'), cp = require('child_process');
 const H = require('./harness'), { ok, done } = H;
 const hd = (a, b) => Math.hypot(a.x - b.x, a.z - b.z), J = v => JSON.stringify(v);
@@ -31,8 +32,10 @@ for (const era of ['ww2', 'modern']) {
     ok(mine.every(o => Math.min(hd(o, T.bases[0]), hd(o, T.bases[1])) >= Q.base), '  none nearer the bases than ' + Q.base + ' m');
     ok(T.burgs.every(b => b === s || hd(b, s) > b.ru + s.ru), '  clear of every other place');
     const L = T.lots.filter(l => l.team === s.team);
-    ok(L.length === Q.lots.length && ['fab', 'pow', 'aa'].every(k => L.some(l => l.k === k)) && L.every(l => hd(l, s) < s.ru), '  ' + L.length + ' lots in it: ' + L.map(l => l.k).join(', '));
-    ok(L.every(l => !T.houses.some(o => hd(o, l) < o.r + Math.min(l.w, l.d) / 2 - 2)) && L.every(l => !T.objs.some(o => o.k === 'tree' && hd(o, l) < Math.hypot(l.w, l.d) / 2)), '  the lots are empty: no building, no tree');
+    const open = L.filter(l => !(l.hi >= 0)), roof = L.filter(l => l.hi >= 0);
+    ok(L.length === Q.lots.length && ['fab', 'pow', 'aa', 'dep'].every(k => L.some(l => l.k === k)) && L.every(l => hd(l, s) < s.ru), '  ' + L.length + ' lots in it: ' + L.map(l => l.k + (l.hi >= 0 ? ' (roof)' : '')).join(', '));
+    ok(open.every(l => !T.houses.some(o => hd(o, l) < o.r + Math.min(l.w, l.d) / 2 - 2)) && L.every(l => !T.objs.some(o => o.k === 'tree' && hd(o, l) < Math.hypot(l.w, l.d) / 2)), '  the lots are empty: no building, no tree');
+    ok(roof.length === 1 && roof[0].k === 'aa' && T.houses[roof[0].hi].B.K.roof === 'flat' && hd(T.houses[roof[0].hi], roof[0]) < 1 && T.houses.filter(o => hd(o, roof[0]) < o.r + Math.min(roof[0].w, roof[0].d) / 2 - 2).length === 1, '  the roof lot: one flat-roofed block in its middle');
   }
   const other = T.houses.filter(o => !seats.some(s => hd(o, s) < s.ru + 30));
   ok(other.every(o => Math.min(hd(o, T.bases[0]), hd(o, T.bases[1])) >= P.base), era + ': every other building keeps ' + P.base + ' m from the bases');
@@ -42,7 +45,7 @@ for (const era of ['ww2', 'modern']) {
   ok(J(T2.houses.map(o => [o.x, o.z, o.B.t])) === J(T.houses.map(o => [o.x, o.z, o.B.t])) && J(T2.lots) === J(T.lots), era + ': the same on every client (another load, another random seed)');
 }
 { let before = process.env.BEFORE;
-  if (!before) try { const f = path.join(os.tmpdir(), 'cdf-seat-before-' + process.pid + '.html'); fs.writeFileSync(f, cp.execSync('git show HEAD:"Céu de Ferro 3D.html"', { cwd: H.ROOT, maxBuffer: 1 << 26 })); before = f; } catch (e) { before = null; }
+  if (!before) try { const f = path.join(os.tmpdir(), 'cdf-seat-before-' + process.pid + '.html'); fs.writeFileSync(f, cp.execSync('git show 71157f5:"Céu de Ferro 3D.html"', { cwd: H.ROOT, maxBuffer: 1 << 26 })); before = f; } catch (e) { before = null; }
   if (before && fs.existsSync(before)) {
     for (const era of ['ww2', 'modern']) {
       const sig = page => { const C = H.load({ seed: 3, mapv: 4, page }); const T = C.$('genTerrain')(era, 4); return J([T.houses.map(o => [o.x, o.z, o.B.t, o.h]), T.objs.length, T.burgs.length]); };
@@ -65,11 +68,27 @@ console.log('-- the economy on the lots --');
   C.run(1);
   const aa = S.units.find(u => !u.dead && u.fixed && u.kind === 'aa' && u.team === 0 && u.es === pow), sq = L.find(l => l.team === 0 && l.k === 'aa');
   ok(aa && hd(aa, sq) < 5, 'a fixed AA asked for at a site in the town stands on the town\'s square (' + (aa ? hd(aa, sq).toFixed(1) : '-') + ' m)');
+  aa.dead = true; const busy = C.addVehicle('truck', null, 0, sq.x, sq.z, 0); busy.fixed = true; busy.inv = 1e9; d0.res.aaf.push('hq');
+  C.run(1);
+  const rl = L.find(l => l.team === 0 && l.k === 'aa' && l.hi >= 0), ho = S.T.houses[rl.hi], ra = S.units.find(u => !u.dead && u.fixed && u.kind === 'aa' && u.team === 0 && u.es === pow);
+  ok(ra && hd(ra, rl) < 5 && Math.abs(ra.y - (ho.y + ho.hh)) < .01 && ra.y > $('hgt')(ra.x, ra.z) + 5, 'with the square taken, the next one stands on the roof lot\'s block (' + (ra ? (ra.y - $('hgt')(ra.x, ra.z)).toFixed(1) : '-') + ' m up)');
+  $('bldDown')(ho, true);
+  ok(Math.abs(ra.y - $('hgt')(ra.x, ra.z)) < .01, 'when the block falls, the AA comes down with it');
+  ok(H.nan(S) === null, 'no NaN');
+}
+
+{ const { C, S, $ } = fresh('ww2'), dep = S.T.lots.find(l => l.team === 0 && l.k === 'dep'), O = $('aiSite')(0);
+  ok(dep && O && hd(O, dep) < .01 && Math.abs(O.a - dep.a) < 1e-9, 'the AI picks the seat town\'s depot lot for its next supply base');
+  ok($('supLot')(0, dep.x + 10, dep.z - 6) === dep && !$('supLot')(1, dep.x, dep.z) && !$('supLot')(0, dep.x + 40, dep.z + 40), 'a point inside the lot is on side 0\'s depot lot; side 1 has none there, and outside it there is none');
+  let b = null; C.run(30, () => !(b = S.sup.find(b => b.team === 0)));
+  ok(b && hd(b, dep) < .01 && Math.abs(b.a - dep.a) < 1e-9, 'its engineers set side 0\'s supply base on the lot, as the block lies');
+  ok($('siteWhy')(0, dep.x, dep.z, dep.a) === 'base', 'the lot takes one base');
+  ok(H.nan(S) === null, 'no NaN');
 }
 
 console.log('-- disguised until identified --');
 { const { C, S, $ } = fresh('ww2'), E = S.eco, fab = E.l.find(e => e.team === 1 && e.k === 'fab'), seen = $('ecoSeen');
-  for (const o of S.units.concat(S.men)) if (o.team === 0) o.dead = true;
+  for (const o of S.units.concat(S.men, S.planes)) if (o.team === 0) o.dead = true;
   ok(fab.lot >= 0 && !fab.idf, 'side 1\'s factory is on a lot, not identified');
   const far = seer(C, fab, 0, 440, 560); ok(!!far, 'a tank of side 0 sees it from ' + (far ? hd(far, fab) | 0 : '-') + ' m (inside the 600 m a plain site in town is spotted at)');
   seen();
@@ -95,6 +114,18 @@ console.log('-- disguised until identified --');
   hostRows.find(r => r[0] === fab.id)[9] = 1; G.$('Net').rx.eco({ e: hostRows });
   ok(gf.idf && G.$('ecoFoe')(0).includes(gf), 'and identified when the host says so');
   ok(H.nan(S) === null, 'no NaN');
+}
+{ const { C, S, $ } = fresh('ww2'), E = S.eco, fab = E.l.find(e => e.team === 1 && e.k === 'fab'), seen = $('ecoSeen'), sees = $('sees'), dist = $('dist'), hgt = $('hgt');
+  for (const o of S.units.concat(S.men, S.planes)) if (o.team === 0) o.dead = true;
+  const fly = (lo, hi) => { for (let r = lo; r <= hi; r += 10) for (let a = 0; a < 6.3; a += .3) for (const up of [80, 150, 250]) {
+    const x = fab.x + Math.cos(a) * r, z = fab.z + Math.sin(a) * r, p = C.addPlane(C.$('ERAS').ww2.sides[0].fighter, 0, x, hgt(x, z) + up, z, 0, false); p.inv = 1e9;
+    if (dist(p, fab) >= lo && dist(p, fab) <= hi && sees(p, fab)) return p; p.dead = true;
+  } return null; };
+  const hiP = fly(430, 560); ok(!!hiP, 'a plane of side 0 sees side 1\'s factory from ' + (hiP ? dist(hiP, fab) | 0 : '-') + ' m');
+  seen(); ok(!fab.idf && !$('ecoFoe')(0).includes(fab), 'beyond 400 m the plane does not identify it');
+  hiP.dead = true; S.t += 5; fab.seenT = -1e9;
+  const loP = fly(200, 380); ok(!!loP, 'a plane of side 0 sees it from ' + (loP ? dist(loP, fab) | 0 : '-') + ' m, flying low');
+  seen(); ok(fab.idf && $('ecoFoe')(0).includes(fab), 'within 400 m the plane identifies it');
 }
 { const { C, S, $ } = fresh('modern', 43), E = S.eco, pow = E.l.find(e => e.team === 1 && e.k === 'pow'), fab = E.l.find(e => e.team === 1 && e.k === 'fab'), seen = $('ecoSeen'), hgt = $('hgt');
   for (const o of S.units.concat(S.men)) if (o.team === 0) o.dead = true;

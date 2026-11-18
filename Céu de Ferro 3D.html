@@ -4685,6 +4685,8 @@ function siteWhy(t, x, z, a) {
   for (const o of S.men) if (!o.dead && o.team !== t && hdist(o, at) < BLD.foe) return 'foe';
   return S.sup.reduce((n, b) => n + (b.team === t && !b.dead ? 1 : 0), 0) >= BLD.cap ? 'cap' : '';
 }
+/* side t's lot for a supply base in its seat town that x z lies in (map version 5), or undefined */
+const supLot = (t, x, z) => (S.T.lots || []).find(l => l.team === t && l.k === 'dep' && Math.hypot(l.x - x, l.z - z) < Math.min(l.w, l.d) / 2);
 /* a base's record and its object, under the id its owner gave it: here, or on the host's word */
 function addSup(id, team, x, z, a, prog) {
   const T = S.T, K = OBJ.supply, [w, d] = BLD.size, p = railOf(x, z), y = hgtT(T, x, z);
@@ -4764,7 +4766,9 @@ function build(P, I, key, trig) {
   if (key) S.bm = S.bm ? null : {};
   const B = S.bm; if (!B) return;
   const D = clamp(BLD.put[0] + (a.p + .5) * (BLD.put[1] - BLD.put[0]) / .5, BLD.put[0], BLD.put[1]), ch = Math.cos(a.h), sh = Math.sin(a.h);
-  B.x = P.x + ch * D; B.z = P.z - sh * D; B.a = a.h; B.y = hgt(B.x, B.z);
+  B.x = P.x + ch * D; B.z = P.z - sh * D; B.a = a.h;
+  const l = supLot(P.team, B.x, B.z); if (l) { B.x = l.x; B.z = l.z; B.a = l.a; }   // inside the seat town's depot lot: on the lot
+  B.y = hgt(B.x, B.z);
   B.why = S.net && !Net.sb ? 'server' : S.bw ? 'wait' : siteWhy(P.team, B.x, B.z, B.a) || (P.kit > 0 ? '' : 'kit');
   P.ctl.fire = P.ctl.ads = false;
   if (I.ordA) { S.bm = null; return; }
@@ -4784,6 +4788,7 @@ function aiSite(t) {
   const A = BLD.ai, R = S.T.routes, ds = t ? 1 : -1, fr = frontR(), mine = S.sup.filter(b => b.team === t && !b.dead), tries = [];
   if ((S.net && !Net.sb) || mine.length >= BLD.bots) return null;
   const bk = S.fld[t].bk || 0;   // after a loss the next one lies farther back
+  for (const l of S.T.lots || []) if (l.team === t && l.k === 'dep' && !siteWhy(t, l.x, l.z, l.a)) { const p = railOf(l.x, l.z); return { k: 'build', ri: p.ri, s: p.s, x: l.x, z: l.z, a: l.a, R: 9 }; }   // the seat town's depot lot first
   for (const w of towns()) if (w.hold === t && w.own !== t && !mine.some(b => hdist(b, w) < 900)) for (const sd of [1, -1]) tries.push([w.ri, w.s - ds * (FIELD.town + 80), sd * A.off]);   // the chain goes on behind a town that was taken
   for (const ri of axesFrom(fr)) if (!mine.some(b => b.ri === ri)) for (let k = 0; k < 6; k++) for (const sd of [1, -1]) tries.push([ri, lineS(t, ri) - ds * (A.back + bk + k * 70), sd * A.off]);
   for (const w of towns()) if (w.hold === t) for (const sd of [1, -1]) tries.push([w.ri, w.s - ds * (FIELD.town + 80), sd * A.off]);
@@ -8227,10 +8232,10 @@ const CITY = { bay: 5, sh: 4.4, body: 2,
     /* map version 5: a seat town per base, d m along a main road from it toward the front (the first spot, every step m, whose
        circle stays clear m off every other place), its buildings kept base m from the bases instead of plan.base, at most cap of
        them (its own share: not counted against RN.hcap; the rows nearest the road are planned first). lots: its blocks kept empty
-       for the side's economy, [kind, ku, side of the road, row]: fab a factory's shed, pow a power plant's industrial block, aa the
-       square a fixed AA stands on (ECO.lot) */
+       for the side's economy, [kind, ku, side of the road, row, roof]: fab a factory's shed, pow a power plant's industrial block, dep a
+       supply base, aa the square a fixed AA stands on, or with roof a flat-roofed block it stands on (ECO.lot) */
     seat: { d: [1850, 3000], step: 50, clear: 150, base: 1300, cap: 100, nm: 'Sede',
-      lots: [['fab', -2, 1, 0], ['pow', 2, -1, 0], ['fab', 3, 1, 0], ['pow', -3, -1, 0], ['pow', -1, -1, 1], ['aa', 0, -1, 0]] } },
+      lots: [['fab', -2, 1, 0], ['pow', 2, -1, 0], ['fab', 3, 1, 0], ['pow', -3, -1, 0], ['pow', -1, -1, 1], ['aa', 0, -1, 0], ['dep', -2, -1, 1], ['aa', 1, -1, 1, 1]] } },
   stair: [.8, .6, 1.65, .5],
   ai: { post: 60, men: 6, stay: 25, shy: 8, clear: 45, nade: 6, enter: 2.2, art: 2, tank: 400, flee: 4 } };
 OBJ.bld = { hp: [100, 0], sight: 1, take: [1, 1, 1], ruin: { h: 2.2, slow: .5 }, fall: { r: 5, dmg: 26 }, veh: bldBump };
@@ -8322,7 +8327,11 @@ function cityPlan(T, era) {
       const u0 = ku * (BW + SW), v0 = g * (C.main + BD / 2 + kv * (BD + SW)), e = Math.hypot(u0 / b.ru, v0 / b.rv) + (rnd() - .5) * .14, zone = e < C.zone[0] && big ? 'core' : e < C.zone[1] ? 'mid' : 'out';
       if (e > 1 || (seat && out.length - n0 >= C.seat.cap)) continue;
       const lot = seat && C.seat.lots.find(l => l[1] === ku && l[2] === g && l[3] === kv);
-      if (lot) { const P = at(u0, v0); LT.push({ k: lot[0], team: b.seat, x: P.x, z: P.z, a: P.a, w: BW - 4, d: BD - 6 }); continue; }   // a lot: kept empty for the economy
+      if (lot) {   // a lot: kept empty for the economy, or a block whose roof carries the AA
+        const P = at(u0, v0), l = { k: lot[0], team: b.seat, x: P.x, z: P.z, a: P.a, w: BW - 4, d: BD - 6 };
+        if (lot[4]) { if (!put('block', P.x, P.z, P.a, 4, 3, 2)) continue; l.hi = out.length - 1; }
+        LT.push(l); continue;
+      }
       const first = mark && !kv && ku === 1 && g === 1, pat = first ? 'square' : of(C.pat[zone]);
       if (pat === 'rows') for (const fs of [-1, 1]) {
         const md = (BD - C.court) / 2;
@@ -8590,6 +8599,7 @@ function bldDown(o, quiet) {
   for (let e = 0; e < B.oR; e++) S.cbs[off + e] = 3;
   for (let e = B.oR; e < B.n; e++) S.cbs[off + e] = 2 + (e * 7 + o.id) % 2;
   S.cblog.push(-1 - (o.id - S.T.bid)); B.rev++; B.doom = null; B.down = true; S.oh[o.id] = 0;
+  for (const u of S.units) if (u.roof === o) u.y = hgt(u.x, u.z);
   if (S.net && S.host) Net.yf.push(o.id - S.T.bid);
   setObj(o, 2, null, quiet);
 }
@@ -11821,7 +11831,7 @@ const ECO = { on: 1, gate: 1, me: 0, dt: .5, cap: { en: 1000, mt: 1000 }, start:
   see: { gnd: 1200, man: 500, air: 1800, dr: 600, cov: .5 }, gd: { r: 250, ring: 40, off: 45 },
   /* map version 5: the lots of a side's seat town (T.lots). A site set on a lot of its kind (at most at m from its middle) is anchored
      by it, keeps only apart m from another site on a lot, and to the other side is a building like any other until identified: an
-     enemy on the ground (a vehicle or a soldier) that sees it within id m, a reconnaissance drone or a man of a reconnaissance team
+     enemy (a vehicle, a soldier or an aircraft) that sees it within id m, a reconnaissance drone or a man of a reconnaissance team
      or a scouting squad within over m of it (passing over it). Until then it is not spotted, not in ecoFoe and not a target */
   lot: { at: 4, apart: 60, id: 400, over: 150 },
   tg: { cas: 1500, tank: 400, dv: 2, pri: 1200, rounds: 6, life: 120 },
@@ -12061,8 +12071,9 @@ function ecoStep(dt) {
     if (E.ctl[t] === 'ai' && S.t >= d.aiT) { d.aiT = S.t + ECO.ai.every; for (const c of ecoAI(t, ecoView(t))) genCmd(t, c, 'ai'); }
     for (const s of E.l) {   // a finished site with a fixed AA asked for and none within reach: one from the reserve, a little toward the enemy
       if (s.team !== t || s.dead || s.prog < 1 || !s.gd.aa || S.units.some(u => !u.dead && u.fixed && u.kind === 'aa' && u.team === t && hdist(u, s) < ECO.gd.r) || !ecoUse(t, 'aaf')) continue;
-      const b = S.base[1 - t], h = headTo(s.x, s.z, b.x, b.z), sq = s.lot >= 0 && (S.T.lots || []).find(l => l.team === t && l.k === 'aa' && hdist(l, s) < ECO.gd.r * 2 && !S.units.some(u => !u.dead && u.fixed && hdist(u, l) < ECO.lot.at * 4));   // in the seat town: on its square
+      const b = S.base[1 - t], h = headTo(s.x, s.z, b.x, b.z), sq = s.lot >= 0 && (S.T.lots || []).find(l => l.team === t && l.k === 'aa' && hdist(l, s) < ECO.gd.r * 2 && !(l.hi >= 0 && S.os[S.T.houses[l.hi].id] >= 2) && !S.units.some(u => !u.dead && u.fixed && hdist(u, l) < ECO.lot.at * 4));   // in the seat town: on its square or a roof
       const u = sq ? addUnit('aa', t, sq.x, sq.z, null, true) : addUnit('aa', t, s.x + Math.cos(h) * ECO.gd.off, s.z - Math.sin(h) * ECO.gd.off, null, true);
+      if (sq && sq.hi >= 0) { u.roof = S.T.houses[sq.hi]; u.y = u.roof.y + u.roof.hh; }
       u.es = s; gLog(t, 'eco', 'Antiaérea fixa instalada junto à ' + s.name.toLowerCase(), s);
     }
   }
@@ -12326,7 +12337,7 @@ bldTargets = (f => (u, all) => { f(u, all); for (const e of ecoFoe(u.team)) all.
 function ecoIdf(e, cams) {
   const L = ECO.lot, f = 1 - e.team, rec = m => !!m.sq && (m.sq.job === 'rec' || (m.sq.ord && m.sq.ord.k === 'scout'));
   const by = S.units.find(o => !o.dead && o.team === f && hdist(o, e) < L.id && sees(o, e)) || S.men.find(o => !o.dead && !o.in && o.team === f && ((hdist(o, e) < L.id && sees(o, e)) || (rec(o) && hdist(o, e) < L.over)))
-    || cams.find(o => o.team === f && hdist(o, e) < L.over);
+    || S.planes.find(o => !o.dead && o.team === f && dist(o, e) < L.id && sees(o, e)) || cams.find(o => o.team === f && hdist(o, e) < L.over);
   if (!by) return false;
   e.idf = true; gLog(f, 'eco', 'Identificada ' + e.name.toLowerCase() + ' disfarçada na cidade-sede inimiga', e, 'id' + e.id);
   return true;
@@ -13188,6 +13199,7 @@ const GC = {
     if (R) { supOpen(C, R.O, R.q); return gYes(); }
     if (S.net && !(S.host && Net.sb)) return gBad('off');
     if (!gMapOk(c.x, c.z)) return gBad('map');
+    const l = supLot(t, c.x, c.z); if (l) c = Object.assign({}, c, { x: l.x, z: l.z, a: l.a });
     const a = Number.isFinite(c.a) ? c.a : headTo(c.x, c.z, S.base[1 - t].x, S.base[1 - t].z), w = siteWhy(t, c.x, c.z, a); if (w) return gBad(w);
     const p = railOf(c.x, c.z), qs = gSqs(t, c.ids).filter(q => gOrdOk(q, p.ri)); if (!qs.length) return gBad(gSqs(t, c.ids).length ? 'reach' : 'sq');
     const q = qs[0]; if (q.op) { gDrop(q); q.op = null; q.back = null; }
@@ -16674,7 +16686,7 @@ function gRes(g, V, P) {
     const c = Math.cos(l.a), s = Math.sin(l.a); g.beginPath();
     [[-1, -1], [1, -1], [1, 1], [-1, 1]].forEach(([i, j], n) => { const u = i * l.w / 2, v = j * l.d / 2, x = P.X(l.x + u * c + v * s), y = P.Y(l.z - u * s + v * c); if (n) g.lineTo(x, y); else g.moveTo(x, y); });
     g.closePath(); g.setLineDash([2, 3]); g.strokeStyle = 'rgba(236,230,214,.45)'; g.lineWidth = 1; g.stroke(); g.setLineDash([]);
-    if (GV.lab) gTxt(g, { fab: 'F', pow: 'E', aa: 'AA' }[l.k], P.X(l.x), P.Y(l.z) + 3 * k, 8 * k, 'rgba(236,230,214,.55)', 'center');
+    if (GV.lab) gTxt(g, { fab: 'F', pow: 'E', aa: 'AA', dep: 'S' }[l.k], P.X(l.x), P.Y(l.z) + 3 * k, 8 * k, 'rgba(236,230,214,.55)', 'center');
   }
   for (const d of E.dep) {
     if (!gOn(P, d.x, d.z, 30)) continue;

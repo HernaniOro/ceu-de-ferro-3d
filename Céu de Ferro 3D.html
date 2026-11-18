@@ -716,7 +716,10 @@ const ARMS = {
   sam: { k: 'sam', rl: 8, dmg: 55, ammo: 12, sp: 0, range: 8500, cone: .16, mrng: 3200, fuse: 18, mpk: .7 },
   ciws: { k: 'gun', rate: .05, dmg: 6.5, spd: 1080, ap: .3, ammo: 3000, life: 3.4, sp: .0035, am: 1.2 },
   he44: { k: 'how', rl: 10, spd: 245, hit: 55, dmg: 100, r: 28, ammo: 30, sp: .003, vs: .004, halt: 1 },
-  he: { k: 'how', rl: 7, spd: 345, hit: 80, dmg: 130, r: 38, ammo: 40, sp: .0012, vs: .0015, halt: 1 }
+  he: { k: 'how', rl: 7, spd: 345, hit: 80, dmg: 130, r: 38, ammo: 40, sp: .0012, vs: .0015, halt: 1 },
+  /* a rocket launcher (MLRS): a howitzer's arc, a salvo of sal rockets rip s apart, then rl s to load the tubes again (faster with a truck of
+     its side by: MLRS.truck) */
+  mrl: { k: 'how', rl: 60, spd: 300, hit: 35, dmg: 70, r: 24, ammo: 32, sp: .008, vs: .008, halt: 1, sal: 16, rip: .4 }
 };
 /* howitzer fire control. ch: the charges, as fractions of the muzzle velocity; lay: how true the gun must lie on the solution to fire from the
    map, rad; dt: step of the predicted arc, s; whistle: a shell is heard this long before it lands, within hear m of the listener, and warns a
@@ -744,20 +747,25 @@ const ARTS = {
   hummel: { name: 'Hummel', l: 7.2, w: 2.9, hh: 1.3, t: [2.9, 2.5, 1.2, -1.7], g: 3.4, open: 1, hp: 70, spd: 9, tr: .5, sl: .24, el: [-.05, 1.22], arm: [['he44', { name: '15 cm sFH 18', rl: 13, hit: 75, dmg: 130, r: 36, ammo: 18 }], ['mg', { name: 'MG 34' }]] },
   priest: { name: 'M7 Priest', l: 6, w: 2.9, hh: 1.3, t: [2.7, 2.5, 1, -.5], g: 2.4, open: 1, hp: 65, spd: 10, tr: .55, sl: .28, el: [-.08, 1.22], arm: [['he44', { name: '105 mm M2A1' }], ['mg', { name: 'M2 .50' }]] },
   pzh: { name: 'PzH 2000', l: 7.9, w: 3.5, hh: 1.4, t: [4.6, 3.2, 1.3, -1.2], g: 6.6, hp: 85, spd: 16, tr: .6, sl: .42, el: [-.04, 1.13], arm: [['he', { name: '155 mm L52' }], ['mg', { name: 'MG3' }]] },
-  msta: { name: '2S19 Msta-S', l: 7.2, w: 3.4, hh: 1.3, t: [4.4, 3, 1.3, -1], g: 6.2, hp: 80, spd: 16, tr: .6, sl: .38, el: [-.07, 1.18], arm: [['he', { name: '152 mm 2A64', rl: 7.5, dmg: 125, r: 36 }], ['mg', { name: 'NSVT 12,7' }]] }
+  msta: { name: '2S19 Msta-S', l: 7.2, w: 3.4, hh: 1.3, t: [4.4, 3, 1.3, -1], g: 6.2, hp: 80, spd: 16, tr: .6, sl: .38, el: [-.07, 1.18], arm: [['he', { name: '152 mm 2A64', rl: 7.5, dmg: 125, r: 36 }], ['mg', { name: 'NSVT 12,7' }]] },
+  /* the rocket launchers (ERAS sides mlrs): t is the box of tubes, g how far they reach past it */
+  pzwerfer: { name: 'Panzerwerfer 42', l: 6, w: 2.2, hh: 1.7, t: [1.9, 1.9, 1.1, -1.6], g: 1.5, open: 1, hp: 40, spd: 11, tr: .55, sl: .35, el: [0, .78], arm: [['mrl', { name: '15 cm Wurfgranate 41', spd: 262, hit: 40, dmg: 80, r: 26, sal: 10, rip: .55, ammo: 20 }], ['mg', { name: 'MG 34' }]] },
+  bm13: { name: 'BM-13 Katyusha', l: 6.6, w: 2.3, hh: 1.6, t: [3.6, 2.1, .8, -1], g: .6, open: 1, hp: 38, spd: 13, tr: .6, sl: .3, el: [0, .78], arm: [['mrl', { name: 'M-13 132 mm', spd: 290, hit: 35, dmg: 72, r: 24, sal: 16, rip: .35, ammo: 32 }], ['mg', { name: 'DT 7,62' }]] },
+  m270: { name: 'M270 MLRS', l: 7, w: 3, hh: 1.6, t: [3.4, 2.6, 1.1, -1.6], g: .2, hp: 70, spd: 16, tr: .6, sl: .5, el: [0, 1], arm: [['mrl', { name: 'M26 227 mm', spd: 470, hit: 45, dmg: 95, r: 34, sal: 12, rip: .9, ammo: 24, sp: .005, vs: .004 }], ['mg', { name: 'M240' }]] },
+  bm21: { name: 'BM-21 Grad', l: 7.4, w: 2.4, hh: 1.6, t: [3, 2.2, 1, -1.6], g: .4, open: 1, hp: 45, spd: 17, tr: .6, sl: .45, el: [0, .95], arm: [['mrl', { name: '9M22U 122 mm', spd: 440, hit: 40, dmg: 75, r: 26, sal: 40, rip: .5, ammo: 40 }], ['mg', { name: 'PKT 7,62' }]] }
 };
 const TRUCK = { hp: 25, spd: 11, tr: .6, sl: 0, el: [0, 0], arm: [] }, DEFS = { plane: PLANES, tank: TANKS, aa: AAS, art: ARTS };
 const kindOf = id => (TANKS[id] ? 'tank' : AAS[id] ? 'aa' : ARTS[id] ? 'art' : 'truck');
 const ERAS = {
   ww2: { label: 'Frente de 1944', W: 14000, HW: 6000, ceil: 6000, fog: 13000,
     sides: [
-      { name: 'Luftwaffe', fighter: 'bf109', cas: 'stuka', tanks: ['tiger', 'pz4'], aa: 'wirbel', art: 'hummel', truck: 'Opel Blitz', col: 0x6a6f62, col2: 0x4d5247 },
-      { name: 'Aliados', fighter: 'spit', cas: 'p47', tanks: ['sherman', 't34'], aa: 'm16', art: 'priest', truck: 'GMC CCKW', col: 0x5f6a3c, col2: 0x454e2b }],
+      { name: 'Luftwaffe', fighter: 'bf109', cas: 'stuka', tanks: ['tiger', 'pz4'], aa: 'wirbel', art: 'hummel', mlrs: 'pzwerfer', truck: 'Opel Blitz', col: 0x6a6f62, col2: 0x4d5247 },
+      { name: 'Aliados', fighter: 'spit', cas: 'p47', tanks: ['sherman', 't34'], aa: 'm16', art: 'priest', mlrs: 'bm13', truck: 'GMC CCKW', col: 0x5f6a3c, col2: 0x454e2b }],
     sky: [0x6f8ea6, 0xcfd3c2], ground: [0x66783f, 0x4c5c30, 0x8a8a70], tree: 0x34472a },
   modern: { label: 'Frente atual', W: 22000, HW: 9000, ceil: 11000, fog: 19000,
     sides: [
-      { name: 'Força Azul', fighter: 'f22', cas: 'a10', tanks: ['abrams', 'leo2'], aa: 'nasams', art: 'pzh', truck: 'HEMTT', col: 0x8a8468, col2: 0x6a654e },
-      { name: 'Força Vermelha', fighter: 'su57', cas: 'su25', tanks: ['t90', 't72'], aa: 'pantsir', art: 'msta', truck: 'Ural-4320', col: 0x5d6a4a, col2: 0x434d35 }],
+      { name: 'Força Azul', fighter: 'f22', cas: 'a10', tanks: ['abrams', 'leo2'], aa: 'nasams', art: 'pzh', mlrs: 'm270', truck: 'HEMTT', col: 0x8a8468, col2: 0x6a654e },
+      { name: 'Força Vermelha', fighter: 'su57', cas: 'su25', tanks: ['t90', 't72'], aa: 'pantsir', art: 'msta', mlrs: 'bm21', truck: 'Ural-4320', col: 0x5d6a4a, col2: 0x434d35 }],
     sky: [0x2f5f93, 0xcfdfe4], ground: [0x8a8558, 0x6c6b46, 0x9a9684], tree: 0x4a5632 }
 };
 /* a tank's main gun has two loads: the armour-piercing one is the gun's own row (ARMS ap44, ap); SHL gives the high-explosive one by that
@@ -768,7 +776,7 @@ const ERAS = {
 const SHL = { ap44: { spd: 580, hit: 10, dmg: 55, r: 14, n: 16, sp: .0014 }, ap: { spd: 1050, hit: 12, dmg: 100, r: 21, n: 18, sp: .001 },
   soft: ['trackL', 'trackR', 'sightG', 'sightC', 'mg', 'cool'], bare: 8, weak: .15, hold: 10, inf: 700, name: ['PERF', 'EXPL'], key: 'V' };
 /* derived: era and side of each vehicle, its resolved arms, the turret pivot height mh and the barrel length bl above the ground */
-for (const era in ERAS) ERAS[era].sides.forEach((sd, side) => { for (const id of sd.tanks) Object.assign(TANKS[id], { era, side }); Object.assign(AAS[sd.aa], { era, side }); Object.assign(ARTS[sd.art], { era, side }); });
+for (const era in ERAS) ERAS[era].sides.forEach((sd, side) => { for (const id of sd.tanks) Object.assign(TANKS[id], { era, side }); Object.assign(AAS[sd.aa], { era, side }); Object.assign(ARTS[sd.art], { era, side }); Object.assign(ARTS[sd.mlrs], { era, side }); });
 for (const d of [...Object.values(TANKS), ...Object.values(AAS), ...Object.values(ARTS), TRUCK]) {
   d.arms = d.arm.map(([id, o]) => Object.assign({}, ARMS[id], o));
   for (const a of d.arms) if (a.k === 'how') a.range = Math.floor(a.spd * a.spd / GR / 100) * 100;
@@ -13338,6 +13346,379 @@ function genState(t) {
   return JSON.parse(JSON.stringify(o, (k, v) => (typeof v === 'number' ? Math.round(v * 10) / 10 : v)));
 }
 
+/* ---------- sappers (SAP): the kit, its mines, and its charges against what stands parked ----------
+   The content of the sappers; what the AI general does with them is not here. A sapper (a kit with sap) carries chg charges instead of
+   one, and mines [anti-tank, anti-personnel] (mines); the charges and the mines come back at a depot as the charge does.
+   N in the build mode goes on from the sandbags to the AT mine, the AP mine and out (S.mm: k 0 AT, 1 AP, where it would lie, put m
+   ahead, and why not); the trigger lays it, cool s apart. V beside a mine its side knows, within near m, lifts it after clear s of standing
+   still: one of its own goes back into the pouch. A mine is a record of its own, not a world object: S.mines, { id, k, team, x, y, z, kn,
+   armT }. kn: bit t, side t knows it (its own side always does). It is armed arm s after it is laid. An enemy hull within at.r m of an AT
+   mine, or an enemy soldier on foot within ap.r m of an AP one, sets it off: a burst of blast m and dmg, and an AT mine breaks the track
+   or the wheels on the side that drove onto it. A sapper on foot and not running finds every enemy mine within det m, looked at every scan s:
+   its side knows that mine from then on. A mine that goes off is known to both sides and leaves a suspect field (sus.r m, for sus.life s) on
+   the map of the side that drove into it. cap: mines a side may have down; base: none within this many m of the side's main base and
+   road m of a road; apart: m between two mines; foe: no enemy this near. sab: with no enemy supply base or economy site at hand, N beside an
+   enemy vehicle standing still (under park m/s, within reach m of it), a fixed AA or a set-down radio arms a charge against it, which goes off
+   after BLD.charge.fuse s: a burst of BLD.charge.dmg over r m, and the hull of a vehicle takes veh of it as well.
+   Each client sets off only what it simulates itself (an entity that is not net): the host its AI, a guest its own body and vehicle.
+   names: the mines by era and side, [AT, AP] */
+const SAP = { chg: 3, mines: [3, 5], put: 2.2, cool: 1.2, arm: 3, det: 25, scan: .5, near: 2.5, clear: 4, still: .6, cap: 30, base: 1350, road: 9, apart: 3, foe: 25,
+  at: { r: 2.6, dmg: 140, blast: 7 }, ap: { r: 1.3, dmg: 120, blast: 6 }, sus: { r: 70, life: 600 },
+  sab: { reach: 7, park: .6, r: 6, veh: .9 },
+  names: { ww2: [['Tellermine 43', 'S-Mine 35'], ['M1A1', 'M2']], modern: [['M15', 'M18A1 Claymore'], ['TM-62', 'MON-50']] },
+  why: { '': '', map: 'fora do mapa', water: 'na água', base: 'estrada da própria base', near: 'outra mina perto demais', foe: 'inimigo perto demais', cap: 'limite de ' + 30 + ' minas do lado', stock: 'sem minas desse tipo', wait: 'aguardando o anfitrião', server: 'servidor antigo: sem minas' } };
+const SAPPERS = { ww2: [{ pionier: { name: 'Pionier', role: 'Sapador', arm: 'mp40', sap: 1, chg: SAP.chg } }, { engineer: { name: 'Combat Engineer', role: 'Sapador', arm: 'm1carb', sap: 1, chg: SAP.chg } }],
+  modern: [{ blueEng: { name: 'Sapador Azul', role: 'Sapador', arm: 'mp7', sap: 1, chg: SAP.chg } }, { redEng: { name: 'Sapyor Vermelho', role: 'Sapador', arm: 'vityaz', sap: 1, chg: SAP.chg } }] };
+for (const era in SAPPERS) SAPPERS[era].forEach((l, side) => { for (const id in l) { const d = (KITS[id] = l[id]); INF[era][side].push(id); Object.assign(d, { era, side, hp: MAN.hp, parts: [], arms: [SARMS[d.arm]] }); } });
+/* an AI soldier's row names its kit by index: the sapper kits come after every kit an older page knew */
+trnKits = (g => () => { const l = g(), sp = id => !!KITS[id].sap; return l.filter(id => !sp(id)).concat(l.filter(sp)); })(trnKits);
+const sapOn = () => !S.net || Net.sap;
+const mines = () => S.mines || (S.mines = []);
+const mineName = (k, team) => SAP.names[S.era][S.fac[team]][k];
+const mineKnown = (o, t) => o.team === t || !!(o.kn & (1 << t));
+const sus = t => (S.msus || (S.msus = [[], []]))[t];
+/* the pouch: a sapper's mines are filled where its charges are */
+addMan = (g => (id, team, x, z, h) => { const m = g(id, team, x, z, h); if (m.def.sap) { m.mn = SAP.mines.slice(); m.chg = SAP.chg; } return m; })(addMan);
+refill = (g => (m, dep) => { g(m, dep); if (dep && m.def.sap) { m.mn = SAP.mines.slice(); m.chg = SAP.chg; } })(refill);
+const sapShort = m => !!m.def.sap && !!m.mn && m.mn.some((n, i) => n < SAP.mines[i]);
+/* why a mine of kind k may not lie at x z for side t: '' or map, water, base, near, foe, cap */
+function mineWhy(k, t, x, z) {
+  if (!(x > 30 && x < S.W - 30 && Math.abs(z) < S.HW - 30)) return 'map';
+  if (hgt(x, z) < S.T.WL + .4) return 'water';
+  if (hdist(S.base[t], { x, z }) < SAP.base && routeDist(S.T, x, z) < SAP.road) return 'base';
+  if (mines().some(o => !o.gone && hdist(o, { x, z }) < SAP.apart)) return 'near';
+  if (S.men.some(o => !o.dead && o.team !== t && hdist(o, { x, z }) < SAP.foe) || S.units.some(o => !o.dead && o.team !== t && hdist(o, { x, z }) < SAP.foe)) return 'foe';
+  return mines().filter(o => !o.gone && o.team === t).length >= SAP.cap ? 'cap' : '';
+}
+function mineAdd(id, k, team, x, z, kn, armed) {
+  const o = { id, k, team, x, y: hgt(x, z), z, kn: kn | (1 << team), armT: armed ? -1 : S.t + SAP.arm, gone: false };
+  mines().push(o); S.mv = (S.mv || 0) + 1; return o;
+}
+/* a mine is laid: solo or on the host, which alone gives out the ids */
+function mineLay(k, t, x, z) {
+  if (!sapOn() || (S.net && !S.host) || mineWhy(k, t, x, z)) return null;
+  const L = mines(); let id = S.mseq || 0;
+  do id = id % 65535 + 1; while (L.some(o => o.id === id));
+  S.mseq = id; Net.mq = true; return mineAdd(id, k, t, x, z, 0);
+}
+function mineDrop(o) { o.gone = true; S.mines = alive(mines()); S.mv = (S.mv || 0) + 1; Net.mq = true; }
+/* it goes off: the burst, the track, and what both sides learn of it. here: set off by what this client simulates, so it is told on */
+function mineBoom(o, v, here) {
+  if (o.gone) return;
+  const A = o.k ? SAP.ap : SAP.at;
+  mineDrop(o);
+  (S.mgone || (S.mgone = new Set())).add(o.id);
+  explode(o.x, o.y + .3, o.z, A.blast, A.dmg, null, o.team, 1, 0);
+  if (v && !o.k && v.kind && !v.net && !v.dead && v.def.parts && v.def.parts.ix) {
+    const D = v.def.parts, s = (o.x - v.x) * Math.sin(v.h) + (o.z - v.z) * Math.cos(v.h) > 0 ? 1 : -1;
+    const i = ['trackL', 'trackR', 'wheelL', 'wheelR'].map(id => D.ix[id]).find(i => i !== undefined && D[i].side === s && v.parts[i].hp > 0);
+    if (i !== undefined) { gone(v, i, null); refit(v); }
+  }
+  const t = 1 - o.team; sus(t).push({ x: o.x, z: o.z, t: S.t });
+  if (S.my && !S.my.dead && hdist(S.my, o) < 120) S.floats.push({ x: o.x, y: o.y + 4, z: o.z, text: 'Mina! ' + mineName(o.k, o.team), life: 2.4 });
+  if (!S.net) return;
+  if (S.host) Net.send('mboom', { id: o.id, k: o.k, s: o.team, p: [+o.x.toFixed(1), +o.z.toFixed(1)] });
+  else if (here) Net.send('mreq', { k: 3, id: o.id });
+}
+/* each step: arming, what sets a mine off, and what the sappers find */
+function mineStep(dt) {
+  const L = S.mines; if (!L || !L.length) return;
+  for (const o of L) {
+    if (o.gone || S.t < o.armT) continue;
+    const A = o.k ? SAP.ap : SAP.at; let v = null;
+    if (o.k) { for (const m of S.men) if (!m.dead && (!m.net || S.host) && !m.in && m.team !== o.team && Math.abs(m.x - o.x) < A.r && Math.abs(m.z - o.z) < A.r && hdist(m, o) < A.r) { v = m; break; } }
+    else for (const u of S.units) if (!u.dead && (!u.net || S.host) && u.team !== o.team && Math.abs(u.x - o.x) < A.r + 3 && Math.abs(u.z - o.z) < A.r + 3 && hdist(u, o) < A.r && u.y - hgt(u.x, u.z) < 3) { v = u; break; }
+    if (v) mineBoom(o, v, !v.net);
+  }
+  if (S.net && !S.host) return;
+  if ((S.mscan = (S.mscan || 0) - dt) > 0) return;
+  S.mscan = SAP.scan;
+  for (const m of S.men) {
+    if (m.dead || m.in || !m.def.sap || m.run) continue;
+    for (const o of L) if (!o.gone && o.team !== m.team && !(o.kn & (1 << m.team)) && hdist(o, m) < SAP.det) {
+      o.kn |= 1 << m.team; Net.mq = true; S.mv = (S.mv || 0) + 1;
+      if (m === S.my) S.floats.push({ x: o.x, y: o.y + 3, z: o.z, text: 'Mina detectada', life: 2 });
+    }
+  }
+}
+/* the sapper lifts a mine its side knows: solo or on the host; own: back into the pouch of who lifted it */
+function mineLift(o, m) {
+  if (o.gone || !mineKnown(o, m.team)) return false;
+  if (o.team === m.team && m.mn) m.mn[o.k]++;
+  mineDrop(o); return true;
+}
+/* ---------- sabotage: a sapper's charge against a parked vehicle, a fixed AA or a set-down radio ---------- */
+function sabTarget(m) {
+  const R = SAP.sab.reach; let best = null, bd = R;
+  for (const u of S.units) { if (u.dead || u.team === m.team || u.kind === 'plane' || Math.hypot(u.v ? u.v.x : 0, u.v ? u.v.z : 0) > SAP.sab.park) continue; const d = hdist(u, m) - 2; if (d < bd) { bd = d; best = u; } }
+  for (const b of S.rad || []) { if (b.dead || b.team === m.team) continue; const d = hdist(b, m); if (d < bd) { bd = d; best = b; } }
+  return best;
+}
+function sabPlant(m, g) {
+  if (!(m.chg > 0) || !g || g.dead) return false;
+  m.chg--; (S.sab || (S.sab = [])).push({ g, by: m, team: m.team, T: S.t + BLD.charge.fuse }); return true;
+}
+function sabStep() {
+  const L = S.sab; if (!L || !L.length) return;
+  for (const c of L) {
+    if (S.t < c.T) continue;
+    c.gone = true; const g = c.g, by = c.by && !c.by.dead ? c.by : null;
+    if (g.dead) continue;
+    const y = g.kind === 'rad' ? g.y : hgt(g.x, g.z) + 1;
+    explode(g.x, y, g.z, SAP.sab.r, BLD.charge.dmg, by, c.team, 1, 1);
+    if (g.kind && g.kind !== 'rad' && !g.dead) hurt(g)(g, BLD.charge.dmg * SAP.sab.veh, by, false, null);
+  }
+  S.sab = alive(L);
+}
+/* ---------- the sapper's hands: the mines in the build mode, lifting, and sabotage ---------- */
+build = (g => (P, I, key, trig) => {
+  const kd = P.kd || (P.kd = {}), vk = !!I.ordB && !kd.sapV; kd.sapV = !!I.ordB;
+  if (!P.def.sap) { S.mm = null; return g(P, I, key, trig); }
+  const a = S.aim, say = text => S.floats.push({ x: P.x + a.d.x * 3, y: P.y + 3, z: P.z + a.d.z * 3, text, life: 2.2 });
+  if (S.mw && S.t > S.mw.T) { if (!mines().some(o => o.k === S.mw.k && hdist(o, S.mw) < 1)) { P.mn[S.mw.k]++; say('O anfitrião recusou a mina'); } S.mw = null; }
+  sapLift(P, vk, say);
+  const foe = S.sup.concat(ecoFoe(P.team)).some(b => !b.dead && b.team !== P.team && footD(b.o, P.x, P.z) < BLD.charge.reach);
+  if (key && !foe && !S.mm && !S.bm && !S.fm) { const t = sabTarget(P); if (t) { say(sabPlant(P, t) ? 'Carga armada: afaste-se' : 'Sem carga de demolição'); return; } }
+  if (key && S.fm && !FORT.K[S.fm.k + 1] && !S.mm) { S.fm = null; S.mm = { k: 0, P }; key = false; }
+  if (!S.mm) return g(P, I, key, trig);
+  if (key) { if (S.mm.k) { S.mm = null; return; } S.mm.k = 1; }
+  const B = S.mm;
+  if (S.bh) { if (I.fire) P.ctl.fire = false; else S.bh = false; }
+  B.x = P.x + Math.cos(a.h) * SAP.put; B.z = P.z - Math.sin(a.h) * SAP.put; B.y = hgt(B.x, B.z);
+  B.why = !sapOn() ? 'server' : S.mw ? 'wait' : !(P.mn[B.k] > 0) ? 'stock' : mineWhy(B.k, P.team, B.x, B.z);
+  P.ctl.fire = P.ctl.ads = false;
+  if (I.ordA) { S.mm = null; return; }
+  if (!trig || B.why || S.bh || S.t < (P.mlT || 0)) return;
+  S.bh = true; P.mlT = S.t + SAP.cool; P.mn[B.k]--;
+  if (S.net && !S.host) { Net.send('mreq', { k: B.k, p: [+B.x.toFixed(1), +B.z.toFixed(1)] }); S.mw = { k: B.k, x: B.x, z: B.z, T: S.t + 2.5 }; }
+  else { mineLay(B.k, P.team, B.x, B.z); say(mineName(B.k, P.team) + ' armada em ' + SAP.arm + ' s'); }
+})(build);
+/* V by a mine its side knows starts the lift (S.ml); moving away, running or firing breaks it off */
+function sapLift(P, vk, say) {
+  const L = S.ml;
+  if (L && (L.o.gone || hdist(P, L) > .6 || P.run || P.ctl.fire)) { S.ml = null; say('Desarme interrompido'); }
+  else if (L && S.t >= L.T) {
+    S.ml = null;
+    if (S.net && !S.host) { Net.send('mreq', { k: 2, id: L.o.id }); if (L.o.team === P.team) P.mn[L.o.k]++; L.o.gone = true; S.mines = alive(mines()); }
+    else mineLift(L.o, P);
+    say(L.o.team === P.team ? 'Mina recolhida' : 'Mina desarmada');
+  }
+  if (!vk || S.ml) return;
+  let best = null, bd = SAP.near;
+  for (const o of mines()) if (!o.gone && mineKnown(o, P.team) && hdist(o, P) < bd) { bd = hdist(o, P); best = o; }
+  if (best) S.ml = { o: best, x: P.x, z: P.z, T: S.t + SAP.clear };
+}
+step = (g => dt => { g(dt); if (S.mines || S.sab) { mineStep(dt); sabStep(); } if (S.msus) for (const l of S.msus) if (l.length && S.t - l[0].t > SAP.sus.life) l.shift(); })(step);
+/* the resupply at a depot also fills the sapper's charges and mines */
+walk = (g => (P, I, dt) => {
+  g(P, I, dt);
+  if (!P.def.sap || P.dead || !(P.chg < SAP.chg || sapShort(P)) || !depot(P) || S.rearm) return;
+  P.sapT = (P.sapT || 0) + dt; S.rearm = clamp(P.sapT / MAN.fill, 0, 1);
+  if (P.sapT > MAN.fill) { P.sapT = 0; refill(P, depot(P)); }
+})(walk);
+/* ---------- sappers online ----------
+   welcome sap: 1, the server knows the sapper kits and three messages (Net.sap); with an older one nobody lays a mine. mine: the host's
+   list, a row each, [id, kind (0 AT, 1 AP), side, x, z, known (bit t: side t knows it)], in parts i of n (q counts the lists): the server
+   passes each player only the rows of its side's mines and of those its side knows. mboom: the host says one went off (its id, kind, side
+   and where), and every client bursts it for what it simulates. mreq: a guest's soldier to the host, k 0 or 1 lay one at p, 2 lift id,
+   3 its own body or vehicle set id off */
+const MROWS = 40;
+Object.assign(Net, { sap: false, mq: false, mqn: 0,
+  mines() {
+    const r = n => +n.toFixed(1), l = mines().filter(o => !o.gone).map(o => [o.id, o.k, o.team, r(o.x), r(o.z), o.kn & 3]), n = Math.ceil(l.length / MROWS) || 1;
+    Net.mq = false; Net.mqn = (Net.mqn + 1) % 1e6;
+    for (let i = 0; i < n; i++) Net.send('mine', { q: Net.mqn, i, n, e: l.slice(i * MROWS, (i + 1) * MROWS) });
+  } });
+Net.tick = (g => dt => { g(dt); if (S && S.net && S.host && Net.sap && Net.mq) Net.mines(); })(Net.tick);
+Net.rx.welcome = (g => m => { Net.sap = m.sap === 1; g(m); })(Net.rx.welcome);
+Net.rx.joined = (g => m => { g(m); if (S && S.net && S.host && Net.sap) Net.mq = true; })(Net.rx.joined);
+Net.adopt = (g => () => { g(); Net.mq = true; S.mseq = mines().reduce((a, o) => Math.max(a, o.id), S.mseq || 0); })(Net.adopt);
+Net.rx.mine = m => {
+  if (!S || !S.net || S.host || !Array.isArray(m.e) || !Number.isInteger(m.i) || !Number.isInteger(m.n)) return;
+  const b = m.i && S.mbuf && S.mbuf.q === m.q ? S.mbuf : (S.mbuf = { q: m.q, l: [] });
+  for (const e of m.e) if (Array.isArray(e) && e.length === 6 && (e[1] === 0 || e[1] === 1) && (e[2] === 0 || e[2] === 1)) b.l.push(e);
+  if (m.i !== m.n - 1) return;
+  const was = new Map(mines().map(o => [o.id, o])), now = [];
+  for (const [id, k, team, x, z, kn] of b.l) {
+    if (S.mgone && S.mgone.has(id)) continue;
+    const o = was.get(id);
+    if (o && o.k === k && o.team === team && Math.abs(o.x - x) + Math.abs(o.z - z) < 1) { if (o.kn !== (kn | (1 << team))) { o.kn = kn | (1 << team); S.mv = (S.mv || 0) + 1; } now.push(o); }
+    else { S.mines = now; mineAdd(id, k, team, x, z, kn, true); }
+  }
+  S.mines = now; S.mbuf = null; S.mv = (S.mv || 0) + 1;
+};
+Net.rx.mboom = m => {
+  if (!S || !S.net || !Array.isArray(m.p)) return;
+  if (S.mgone && S.mgone.has(m.id)) return;
+  const o = mines().find(o => o.id === m.id) || { id: m.id, k: m.k ? 1 : 0, team: m.s ? 1 : 0, x: m.p[0], y: hgt(m.p[0], m.p[1]), z: m.p[1], kn: 3, gone: false };
+  const P = S.my, A = o.k ? SAP.ap : SAP.at, v = P && !P.dead && !o.k ? [P, P.in].find(u => u && u.kind && !u.net && hdist(u, o) < A.r + 2) : null;
+  mineBoom(o, v || null, false);
+};
+Net.rx.mreq = m => {
+  const g = Net.ghosts.get(m.from);
+  if (!S || !S.net || !S.host || !g || g.dead || !Net.sap) return;
+  const P = g.man ? g : null, o = Number.isInteger(m.id) ? mines().find(o => o.id === m.id && !o.gone) : null;
+  if ((m.k === 0 || m.k === 1) && P && P.def.sap && Array.isArray(m.p) && Math.hypot(m.p[0] - g.x, m.p[1] - g.z) < SAP.put + 4) mineLay(m.k, g.team, m.p[0], m.p[1]);
+  else if (m.k === 2 && P && P.def.sap && o && hdist(o, g) < SAP.near + 2) mineLift(o, { team: g.team });
+  else if (m.k === 3 && o && hdist(o, g) < 12) mineBoom(o, null, false);
+};
+
+/* ---------- posts (POSTS): works with a crew-served weapon, the sniper tower and the anti-rocket dome; the rocket launchers' salvo ----------
+   Three more kinds of work after the trench and the sandbags (FORT.K 3 to 6), built as those are and in the same cycle of N. Each is low
+   cover like a wall of sandbags. A finished post of side t gets a garrison where the match is simulated (once, tried again every `again` s
+   until it fits: the garrisons may go room soldiers over the population cap IAI.cap, as many as the posts' caps can hold): a squad of kits garr (an index
+   in the side's INF list, or 'snp' its sniper) that holds it (job fpost, q.wpost the work) and keeps to its places (gunner at the middle, the rest behind it).
+   gun: the post's weapon by era and side; whoever of its side stands in it first (the player before an AI soldier) fires it, in place of
+   the small arm (slot 0, the machine-gun nest) or the special (slot 1, the anti-tank post), with the post's own rounds, and has back what
+   it carried when it steps out. Every client hands the weapon out alike, so a guest's copy of a soldier fires what the host's does.
+   The tower: a soldier of its side who steps within ladder m of its footprint climbs onto its platform, eye m up, and comes down when he steps off it
+   (the box of the work itself is only its foot, foot m high).
+   The dome (modern only): radar and interceptors. A howitzer, mortar or rocket round of the other side that will come down within r m of
+   it is engaged on its way down, one every gap s from a magazine of mag that loads again one every load s; each shot costs mt metal when
+   the economy is on, and stops the round with chance pk (f.dk counts what it stopped) (the same roll on every client: it is drawn from the round's launch numbers). A
+   guided missile for the ground within r m is engaged where the match is simulated. The radar shows its side who fired (the shooter is
+   spotted). cost: [en, mt] paid when the work starts, where the economy is on; a side short of them cannot start it.
+   MLRS: a launcher's salvo goes on while the trigger is held; its tubes load again `fast` times faster with a truck of its side within truck m */
+const POSTS = {
+  atp: { k: 3, name: 'Posto anticarro', obj: 'post', size: [5, 3, 1.1], time: 45, cap: 3, put: [5, 9], pad: .6, road: 9, min: .5, near: 2.6, back: 1.4, conceal: .35, pitch: 2.5, cost: [40, 60], slot: 1, garr: [0, 0],
+    gun: { ww2: ['pak40', 'm1at57'], modern: ['tow2', 'kornet'] } },
+  mgn: { k: 4, name: 'Ninho de metralhadora', obj: 'post', size: [4, 3, 1.2], time: 25, cap: 4, put: [4, 8], pad: .6, road: 9, min: .5, near: 2.6, back: 1.4, conceal: .4, pitch: 2, cost: [15, 25], slot: 0, garr: [0, 0],
+    gun: { ww2: ['mg42p', 'm1919'], modern: ['m2hb', 'kord'] } },
+  twr: { k: 5, name: 'Torre de sniper', obj: 'tower', size: [3, 3, 1], eye: 10.5, ladder: 2.5, foot: 1, time: 40, cap: 2, put: [5, 9], pad: .8, road: 9, min: 1, near: .5, back: 0, conceal: .55, pitch: 3, cost: [20, 30], garr: ['snp'] },
+  dome: { k: 6, name: 'Cúpula antifoguete', obj: 'dome', size: [8, 8, 4.5], time: 150, cap: 2, put: [8, 14], pad: 1, road: 12, min: 1, near: 2, back: 0, conceal: 0, pitch: 4, era: 'modern', cost: [300, 400], garr: [],
+    r: 2000, pk: .75, mag: 20, gap: .25, load: 3, mt: 15, low: 40 } };
+POSTS.room = 2 * (POSTS.atp.cap * POSTS.atp.garr.length + POSTS.mgn.cap * POSTS.mgn.garr.length + POSTS.twr.cap * POSTS.twr.garr.length);
+const POSTK = [POSTS.atp, POSTS.mgn, POSTS.twr, POSTS.dome];
+for (const F of POSTK) FORT.K[F.k] = F;
+FORT.dome = POSTS.dome;
+OBJ.post = { hp: [70, 0], take: [1, 1, 1], crush: .4 };
+OBJ.tower = { hp: [90, 0], take: [.6, .6, 1], dug: 9 };
+OBJ.dome = { hp: [220, 0], take: [.4, .4, 1] };
+const MLRS = { truck: 40, fast: 1.5 };
+POSTS.again = 5;
+Object.assign(SARMS, {
+  pak40: { name: '7,5 cm PaK 40', k: 'heat', spd: 790, dmg: 150, r: 4, n: 12, rl: 4.5, rng: 1000, sp: .0025 }, m1at57: { name: '57 mm M1', k: 'heat', spd: 820, dmg: 120, r: 4, n: 14, rl: 3.5, rng: 1000, sp: .0025 },
+  tow2: { name: 'BGM-71 TOW-2', k: 'atgm', dmg: 220, r: 7, n: 6, rl: 10, rng: 3750, min: 65, cone: .1, lockT: 1.5 }, kornet: { name: '9M133 Kornet', k: 'atgm', dmg: 230, r: 7, n: 6, rl: 10, rng: 4500, min: 100, cone: .1, lockT: 1.5 },
+  mg42p: { name: 'MG 42 (reparo)', rate: .05, dmg: 9, spd: 750, mag: 250, mags: 4, sp: .005, rl: 6, auto: 1, lmg: 1 }, m1919: { name: 'M1919A4', rate: .1, dmg: 9.5, spd: 850, mag: 250, mags: 4, sp: .005, rl: 6, auto: 1, lmg: 1 },
+  m2hb: { name: 'M2HB .50', rate: .1, dmg: 15, spd: 890, mag: 100, mags: 5, sp: .0045, rl: 6.5, auto: 1, lmg: 1 }, kord: { name: 'Kord 12,7', rate: .095, dmg: 15, spd: 860, mag: 50, mags: 8, sp: .0045, rl: 5, auto: 1, lmg: 1 } });
+const postGun = f => f.F.gun && SARMS[f.F.gun[S.era][S.fac[f.team]]];
+const postArm = d => ({ d, mag: d.mag || 1, res: d.k ? d.n - 1 : d.mags, cool: 0, rl: 0, t: -9, lock: null, lockT: 0 });
+/* a dome only in its era; a post the side cannot pay for */
+fortWhy = (g => (k, t, x, z, a, pre) => {
+  const F = FORT.K[k];
+  if (F && F.era && F.era !== S.era) return 'era';
+  const w = g(k, t, x, z, a, pre); if (w || pre || !F || !F.cost || !ecoSim() || !S.eco.d[t]) return w;
+  const d = S.eco.d[t]; return d.en < F.cost[0] || d.mt < F.cost[1] ? 'cost' : '';
+})(fortWhy);
+fortStart = (g => (k, t, x, z, a) => {
+  const f = g(k, t, x, z, a), F = FORT.K[k];
+  if (f && F.cost && ecoSim() && S.eco.d[t]) { const d = S.eco.d[t]; d.en -= F.cost[0]; d.mt -= F.cost[1]; }
+  return f;
+})(fortStart);
+/* the garrison comes when the work is done, where the match is simulated */
+fortAt = (g => (f, prog) => {
+  const was = f.prog; g(f, prog);
+  if (was < 1 && prog >= 1 && f.F.garr && f.F.garr.length && !f.pre && (!S.net || S.host) && !f.garr) postGarr(f);
+})(fortAt);
+function postGarr(f) {
+  const E = INF[S.era][S.fac[f.team]], kits = f.F.garr.map(k => (k === 'snp' ? E.findIndex(id => KITS[id].snp) : k)).filter(i => i >= 0);
+  if (!kits.length || S.men.length + kits.length > IAI.cap + POSTS.room) return null;
+  const p = railOf(f.x, f.z), cap = IAI.cap; let q;
+  IAI.cap += POSTS.room; try { q = addSquad(f.team, f.x - Math.cos(f.a) * 4, f.z + Math.sin(f.a) * 4, p.ri, p.s, kits); } finally { IAI.cap = cap; }
+  if (!q.men.length) { S.squads.splice(S.squads.indexOf(q), 1); return null; }
+  q.job = 'fpost'; q.wpost = f; f.garr = q;
+  setOrd(q, { k: 'hold', ri: p.ri, s: p.s, x: f.x, z: f.z, R: 3 }); q.at = true;
+  return q;
+}
+/* its places: the gunner behind the middle of its wall (the sniper in the middle of the tower), the others a step behind, facing the enemy */
+function postSlots(f, n) {
+  const bx = -Math.cos(f.a), bz = Math.sin(f.a), ux = -Math.sin(f.a), uz = -Math.cos(f.a), g = f.k === 5 ? 0 : f.o.hd + .7, b = f.o.hd + (f.F.back || 1.4) + 1;
+  const l = [{ x: f.x + bx * g, z: f.z + bz * g }];
+  for (let i = 1; i < n; i++) { const s = (i & 1 ? 1 : -1) * Math.ceil(i / 2) * 1.4; l.push({ x: f.x + bx * b + ux * s, z: f.z + bz * b + uz * s }); }
+  return l;
+}
+ptPts = (g => (q, O) => (q.wpost && !q.wpost.gone && q.ord && q.ord.k === 'hold' && q.ord.x === q.wpost.x && q.ord.z === q.wpost.z ? postSlots(q.wpost, Math.max(q.n0, 1)) : g(q, O)))(ptPts);
+/* after the soldiers have been put at their works: the tower lifts who stands in it; the gun goes to who mans the post */
+fortMen = (g => dt => {
+  g(dt);
+  for (const f of S.forts) if (f.k >= 3 && f.prog >= 1 && !f.gone && f.F.gun) postMan(f);
+  for (const m of S.men) {
+    const f = m.fc;
+    if (m.pa && (m.dead || m.in || !f || f.gone || f.gm !== m)) postFree(m);
+    const w = m.in || m.dead ? null : m.tw && !m.tw.gone ? m.tw : fortsAt(m.x, m.z).find(q => q.k === 5 && q.prog >= 1 && !q.gone && q.team === m.team);
+    if (w) {   // up the ladder from the band around it, down once it steps off the platform
+      const f = w, o = f.o, dx = m.x - o.x, dz = m.z - o.z, lx = dx * o.c - dz * o.s, lz = dx * o.s + dz * o.c, up = m.tw === f, e = up ? 0 : f.F.ladder;
+      if (Math.abs(lx) < o.hw + e && Math.abs(lz) < o.hd + e) {
+        if (!up) { const k = .8, cx = clamp(lx, -o.hw * k, o.hw * k), cz = clamp(lz, -o.hd * k, o.hd * k); m.x = o.x + cx * o.c + cz * o.s; m.z = o.z - cx * o.s + cz * o.c; }
+        m.y = manY(m.x, m.z) + f.F.eye; m.tw = f; continue;
+      }
+    }
+    if (m.tw) { m.tw = null; m.y = manY(m.x, m.z); }
+  }
+})(fortMen);
+function postMan(f) {
+  const g = f.gm;
+  if (g && (g.dead || g.in || g.fc !== f || g.team !== f.team)) { if (g.pa) postFree(g); f.gm = null; }
+  const P = S.my && S.my.man && !S.my.dead && !S.my.in && S.my.fc === f && S.my.team === f.team ? S.my : null;
+  if (f.gm && (!P || f.gm === P)) return;
+  let m = P;
+  if (!m) { let bd = 1e9; for (const o of S.men) if (!o.dead && !o.in && o.fc === f && o.team === f.team && !o.def.mort && !o.def.drone) { const d = hdist(o, f); if (d < bd) { bd = d; m = o; } } }
+  if (!m || m === f.gm) return;
+  if (f.gm) postFree(f.gm);
+  const d = postGun(f); if (!d) return;
+  const i = f.F.slot, a = f.ga || (f.ga = postArm(d));
+  m.pa = { i, a: m.arms[i], w: m.w }; m.arms[i] = a; f.gm = m;
+  if (i === 1) { m.w = 1; m.ctl.w = 1; }
+  if (m === S.my) S.floats.push({ x: f.x, y: f.y + 3, z: f.z, text: 'Você opera: ' + d.name, life: 2.2 });
+}
+function postFree(m) {
+  const p = m.pa; if (!p) return;
+  if (p.a) m.arms[p.i] = p.a; else m.arms.length = p.i;
+  m.w = m.ctl.w = Math.min(p.w || 0, m.arms.length - 1); m.pa = null;
+  for (const f of S.forts) if (f.gm === m) f.gm = null;
+}
+/* the dome, each step */
+const dRoll = b => { const v = Math.sin(b.x * 12.9898 + b.z * 78.233 + b.vx * 37.719 + b.vz * 11.131 + b.vy * 3.17) * 43758.5453; return v - Math.floor(v); };
+function domeStep(dt) {
+  const D = POSTS.dome, sim = !S.net || S.host;
+  for (const f of S.forts) {
+    if (f.k !== 6 || f.prog < 1 || f.gone || S.os[f.id] > 1) continue;
+    if (f.dm === undefined) { f.dm = D.mag; f.dl = 0; f.dn = 0; }
+    if (f.dm < D.mag && (f.dl += dt) >= D.load) { f.dl = 0; f.dm++; }
+    const pay = () => { if (!ecoSim() || !S.eco.d[f.team]) return true; const d = S.eco.d[f.team]; if (d.mt < D.mt) return false; d.mt -= D.mt; return true; };
+    for (const b of S.bombs) {
+      if (b.k !== 'he' || b.gone || b.dj || b.team === f.team || b.px === undefined || Math.hypot(b.px - f.x, b.pz - f.z) > D.r || b.t < b.T * .5 || b.y - hgt(b.x, b.z) < D.low) continue;
+      if (f.dm < 1 || S.t < f.dn) continue;
+      if (!pay()) { b.dj = 1; continue; }
+      b.dj = 1; f.dm--; f.dn = S.t + D.gap;
+      if (b.by && b.by.team !== f.team) { b.by.seenT = S.t; if (b.by.sx !== undefined) { b.by.sx = b.by.x; b.by.sz = b.by.z; } }
+      if (dRoll(b) < D.pk) { b.gone = true; f.dk = (f.dk || 0) + 1; blastFx(b.x, b.y, b.z, 5); if (S.my && hdist(S.my, f) < D.r) S.floats.push({ x: b.x, y: b.y, z: b.z, text: 'interceptado', life: 1.4 }); }
+    }
+    if (!sim) continue;
+    for (const m of S.missiles) {
+      if (m.gone || m.dj || m.team === f.team || !(m.target && !m.target.plane && (m.target.kind || m.target.man || m.target.gnd)) || hdist(m, f) > D.r || f.dm < 1 || S.t < f.dn) continue;
+      if (!pay()) { m.dj = 1; continue; }
+      m.dj = 1; f.dm--; f.dn = S.t + D.gap;
+      if (Math.random() < D.pk) { f.dk = (f.dk || 0) + 1; intercept(m, { me: false, team: f.team }); }
+    }
+  }
+}
+step = (g => dt => {
+  g(dt);
+  if (!S.forts) return;
+  if (S.forts.some(f => f.k === 6)) domeStep(dt);
+  if ((!S.net || S.host) && (S.pgT = (S.pgT || 0) - dt) <= 0) { S.pgT = POSTS.again; for (const f of S.forts) if (f.k >= 3 && f.prog >= 1 && !f.gone && !f.pre && f.F.garr.length && !f.garr) postGarr(f); }
+})(step);
+/* the rocket launchers' salvo, and their tubes loaded again by a truck */
+arms = (g => (u, dt) => {
+  g(u, dt);
+  for (const a of u.arms) {
+    const w = a.d; if (!w.sal) continue;
+    if (a.t === S.t && a.n !== a.sn0) { a.sn0 = a.n; a.sv = (a.sv || 0) + 1; if (a.sv < w.sal && a.ammo > 0) a.cool = w.rip / Math.max(.3, u.mod.reload); else a.sv = 0; }
+    else if (!a.sv && a.cool > w.rip && S.units.some(t => !t.dead && t.team === u.team && t.kind === 'truck' && hdist(t, u) < MLRS.truck)) a.cool -= dt * (MLRS.fast - 1);
+  }
+})(arms);
+
 /* ---------- 3D scene (three.js) ---------- */
 const $ = s => document.querySelector(s);
 const cv = $('#cv'), hudCv = $('#hud'), hx = hudCv.getContext('2d');
@@ -14082,10 +14463,10 @@ function fortBoxes(put) {
       box(0, hb * .3, -w / 2 - B[3] / 2, hw * 2 + 1.2, hb * .6, B[3], L.earth); box(0, hb * .8, -w / 2 - B[3] * .45, hw * 2 + .2, hb * .4, B[3] * .5, L.spoil);
       for (const e of [1, -1]) box(e * (hw + .45), hb / 2, 0, .9, hb, w + .4, L.earth);
       if (f.br !== null) for (const e of [1, -1]) box(f.br + e * TR.plank[0] * .28, B[0] + .08, 0, TR.plank[0] * .3, .14, w + B[2] + B[3] + 1, L.plank);
-    } else {
+    } else if (f.k === 2) {
       const n = [5, 4, 5], d = BG.size[1], h = BG.size[2] / 3, rows = st ? 2 : Math.max(1, Math.round(p * 3));
       for (let r = 0; r < rows; r++) for (let i = 0; i < n[r]; i++) box((i - (n[r] - 1) / 2) * hw * 2 / 5, h * (r + .5), 0, hw * 2 / 5 - .08, h - .05, d * (1 - .13 * r), L.bag[(i + r) & 1]);
-    }
+    } else postBoxes(f, box, p, st);   // the posts and the dome (POSTS)
   }
 }
 /* a tree one can see under: a bare trunk as thick as the one that is hit (OBJS.tree) and the crown above it, in the frame of the cone
@@ -17993,6 +18374,86 @@ LEGEND.inf = (g => (d, o) => {
 })(LEGEND.inf);
 BRIEF.inf = (g => (d, o) => g(d, o) + (d.drone ? ' Como operador de drone você leva só o fuzil e os drones: três FPV de ataque com carga oca (mortais no teto e na traseira de um tanque, em veículos leves e em quem está em trincheira), dois bombardeiros que soltam granadas e voltam, dois quadricópteros de reconhecimento e uma munição vagante de longo alcance. A bateria dura poucos minutos e cai mais rápido com o motor no máximo. O sinal enfraquece com a distância, atrás de morros e casas e perto de um veículo com bloqueador (' + Object.keys(DJAM).filter(k => TRNS[k]).map(k => TRNS[k].name).join(' e ') + '): primeiro chuvisco e atraso nos comandos, depois a perda, e o FPV cai. Fumaça tapa a câmera. Qualquer fuzil ou metralhadora derruba um drone, e as antiaéreas atiram neles; quem está perto ouve o zumbido.' : ''))(BRIEF.inf);
 Net.ui.refused = (g => code => { const k = cls === 'inf' && KITS[sel[era].inf]; if (code === 'model' && k && k.drone) return netStatus('O servidor desta sala é antigo e não conhece drones. Escolha outro kit de infantaria.'); g(code); })(Net.ui.refused);
+/* ---------- sappers, mines, posts and the dome: what is seen of them, the HUD and the hangar ----------
+   MLOOK: a mine is a flat disc on the ground, drawn for its own side and, once known, for the other; own and foe its colours; ghost the
+   outline of where the trigger would lay one. The works of POSTS are a few boxes in the instanced mesh of the trenches (postBoxes) */
+const MLOOK = { max: 64, r: .32, h: .12, own: 0x6f8a52, foe: 0xd8573f, ghost: [.7, .2] };
+let gMines = null;
+function postBoxes(f, box, p, st) {
+  const F = f.F, L = FLOOK, hw = f.o.hw, hd = f.o.hd, rows = st ? .6 : Math.max(.25, p), dark = 0x2e3330, steel = 0x5c625c, wood = 0x6f5b3c, conc = 0x8d8a80;
+  if (f.k === 3 || f.k === 4) {
+    const h = F.size[2] * rows, d = .9;
+    box(0, h / 2, hd - d / 2, hw * 2, h, d, L.bag[0]); for (const e of [1, -1]) box(e * (hw - d / 2), h / 2, 0, d, h, hd * 2 - d, L.bag[1]);
+    if (p >= 1 && f.k === 3) { box(0, .9, -.2, .5, .6, 1.4, dark); box(0, 1.15, .9, .16, .16, 1.6, steel); box(0, .6, -.2, 1.6, .12, .9, steel); }
+    if (p >= 1 && f.k === 4) { box(0, 1.25, .2, .14, .14, 1.3, dark); box(0, 1.05, -.2, .3, .25, .6, dark); box(0, .55, -.2, .9, .1, .7, steel); }
+  } else if (f.k === 5) {
+    const H = F.eye * rows, s = hw - .2;
+    for (const a of [1, -1]) for (const b of [1, -1]) box(a * s, H / 2, b * s, .28, H, .28, f.team ? conc : wood);
+    if (p >= 1) { box(0, F.eye - .15, 0, hw * 2 + .4, .3, hd * 2 + .4, wood); for (const e of [1, -1]) { box(0, F.eye + .45, e * (hd + .1), hw * 2 + .4, .6, .12, wood); box(e * (hw + .1), F.eye + .45, 0, .12, .6, hd * 2 + .4, wood); } box(0, F.eye + 1.9, 0, hw * 2 + .8, .15, hd * 2 + .8, wood); }
+  } else if (f.k === 6) {
+    const h = F.size[2] * rows;
+    box(0, .4, 0, hw * 2, .8, hd * 2, conc);
+    if (p >= 1) { box(-hw * .45, 1.6, 0, 2.6, 1.6, 3, steel); box(-hw * .45, 2.6, -.4, 2.2, .5, 2.4, dark); box(hw * .45, 2.4, 0, .4, 3, .4, steel); box(hw * .45, h, 0, 2.6, 1.6, .25, dark); }
+    else box(0, h / 2, 0, hw * 1.2, h, hd * 1.2, steel);
+  }
+}
+fortScene = (g => () => {
+  g();
+  const P = S.my, B = S.mm && S.mm.x !== undefined && P && !P.dead ? S.mm : null;
+  if (B) { const [w, h] = MLOOK.ghost; gFortGhost.visible = true; gFortGhost.scale.set(w * 2, h, w * 2); gFortGhost.position.set(B.x, B.y + h / 2 + .05, B.z); gFortGhost.material.color.setHex(B.why ? 0xe2604f : 0x6fd67a); }
+  if (!gMines || gMines.parent !== scene) {
+    gMines = new THREE.InstancedMesh(new THREE.CylinderGeometry(MLOOK.r, MLOOK.r * 1.15, MLOOK.h, 10), new THREE.MeshPhongMaterial({ color: 0xffffff, shininess: 8 }), MLOOK.max);
+    gMines.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(MLOOK.max * 3), 3); gMines.frustumCulled = false; gMines.count = 0; scene.add(gMines);
+  }
+  const M = WM, me = S.spec ? -1 : S.me; let n = 0;
+  for (const o of S.mines || []) {
+    if (o.gone || n >= MLOOK.max || (me >= 0 && !mineKnown(o, me))) continue;
+    gMines.setMatrixAt(n, M.mx.compose(M.v.set(o.x, o.y + MLOOK.h / 2 - .02, o.z), M.q.identity(), M.s.set(1, 1, 1)));
+    gMines.setColorAt(n++, M.c.setHex(me >= 0 && o.team !== me ? MLOOK.foe : MLOOK.own));
+  }
+  gMines.count = n; gMines.instanceMatrix.needsUpdate = true; if (gMines.instanceColor) gMines.instanceColor.needsUpdate = true;
+})(fortScene);
+/* the HUD: the whole cycle of N for a post or a mine, and the sapper's pouch, its lift and the nearest mine it knows */
+const PWHY = { era: 'A cúpula antifoguete só existe na frente atual', cost: 'Seu lado não tem a energia e o metal desta obra', server: 'O servidor desta sala é antigo e não conhece os postos', pcap: 'Seu lado já tem o máximo desta obra' };
+hudFort = (g => (P, u, ink, acc, disp) => {
+  const B = S.fm, M = S.mm, dim = 'rgba(158,170,162,.95)';
+  if (!(B && B.k >= 3) && !M) { g(P, u, ink, acc, disp); return sapHud(P, u, ink, acc, dim); }
+  const names = ['BASE', 'TRINCHEIRA', 'SACOS'].concat(POSTK.filter(F => !F.era || F.era === S.era).map(F => F.name.toUpperCase()), P.def.sap && sapOn() ? ['MINA AT', 'MINA AP'] : []);
+  const cur = M ? names.length - 2 + M.k : names.indexOf(FORT.K[B.k].name.toUpperCase()), w = Math.min(120 * u, cw * .9 / names.length);
+  let x = cw / 2 - w * (names.length - 1) / 2;
+  names.forEach((s, i) => { txt((i === cur ? '[ ' : '') + s + (i === cur ? ' ]' : ''), x, ch * .6 - 24 * u, 10 * u, i === cur ? acc : dim, 'center'); x += w; });
+  txt('N: próximo tipo', cw / 2, ch * .6 + 42 * u, 10 * u, dim, 'center');
+  if (M) {
+    txt('ARMAR ' + mineName(M.k, P.team).toUpperCase() + '  ×' + (P.mn ? P.mn[M.k] : 0), cw / 2, ch * .6, 15 * u, acc, 'center', disp);
+    txt(M.why ? SAP.why[M.why] || M.why : 'Clique: armar aqui  ·  botão direito: sair', cw / 2, ch * .6 + 22 * u, 13 * u, M.why ? FOE : '#8fe39a', 'center');
+    return;
+  }
+  const F = FORT.K[B.k], c = F.cost ? '  ·  ' + F.cost[0] + ' energia, ' + F.cost[1] + ' metal' : '';
+  txt('CONSTRUIR ' + F.name.toUpperCase(), cw / 2, ch * .6, 15 * u, acc, 'center', disp);
+  const why = B.why === 'bcap' || B.why === 'tcap' ? PWHY.pcap : PWHY[B.why] || (FWHY && FWHY[B.why]) || B.why;
+  txt(B.why ? why : 'Clique: começar aqui  ·  botão direito: sair' + c, cw / 2, ch * .6 + 22 * u, 13 * u, B.why ? FOE : '#8fe39a', 'center');
+})(hudFort);
+function sapHud(P, u, ink, acc, dim) {
+  const f = P.fc && P.fc.k >= 3 && P.fc.prog >= 1 ? P.fc : null;
+  if (f && f.gm === P) txt('OPERANDO: ' + postGun(f).name.toUpperCase(), cw / 2, ch * .72, 12 * u, acc, 'center');
+  else if (f && f.k === 5 && P.tw) txt('NA TORRE: OLHO A ' + Math.round(f.F.eye + STANCE[P.st].eye * MAN.sc) + ' m', cw / 2, ch * .72, 12 * u, acc, 'center');
+  if (!P.def.sap) return;
+  const L = S.ml;
+  if (L) { txt('DESARMANDO A MINA', cw / 2, ch * .66, 13 * u, acc, 'center'); bar(cw / 2 - 70 * u, ch * .66 + 18 * u, 140 * u, 6 * u, 1 - (L.T - S.t) / SAP.clear, acc); return; }
+  let best = null, bd = SAP.det;
+  for (const o of S.mines || []) if (!o.gone && mineKnown(o, P.team) && hdist(o, P) < bd) { bd = hdist(o, P); best = o; }
+  if (best) txt((best.team === P.team ? 'MINA DO SEU LADO' : 'MINA INIMIGA') + ' A ' + Math.round(bd) + ' m' + (bd < SAP.near ? '  ·  V: desarmar' : ''), cw / 2, ch * .66, 12 * u, best.team === P.team ? ink : FOE, 'center');
+  txt('MINAS AT ×' + (P.mn ? P.mn[0] : 0) + '  AP ×' + (P.mn ? P.mn[1] : 0) + '  ·  DETECTOR ' + (P.run ? 'PARADO (correndo)' : 'LIGADO ' + SAP.det + ' m'), cw / 2, ch - 62 * u, 11 * u, dim, 'center');
+}
+/* the hangar: an older server does not know the sappers or the rocket launchers */
+Net.ui.refused = (g => code => {
+  const k = cls === 'inf' && KITS[sel[era].inf], a = cls === 'art' && ARTS[sel[era].art];
+  if (code === 'model' && k && k.sap) return netStatus('O servidor desta sala é antigo e não conhece os sapadores. Escolha outro kit de infantaria.');
+  if (code === 'model' && a && a.arms[0].sal) return netStatus('O servidor desta sala é antigo e não conhece os lançadores de foguetes. Escolha outra artilharia.');
+  g(code);
+})(Net.ui.refused);
+BRIEF.inf = (g => (d, o) => g(d, o) + (d.sap ? ' Como sapador você leva ' + SAP.chg + ' cargas de demolição e minas (' + SAP.mines[0] + ' anticarro, ' + SAP.mines[1] + ' antipessoal). N passa pelo modo de obra até as minas; o clique arma uma, que fica pronta em ' + SAP.arm + ' s. Só o seu lado vê as suas minas; o inimigo só as vê quando um sapador dele as detecta ou quando uma explode. A pé e sem correr, o seu detector acha as minas inimigas a até ' + SAP.det + ' m; parado ao lado de uma, V a desarma em ' + SAP.clear + ' s. Com a carga você derruba, além das bases e instalações, um veículo inimigo parado, uma antiaérea fixa ou um rádio pousado. Cargas e minas voltam num depósito. Cada lado tem até ' + SAP.cap + ' minas no chão.' : ''))(BRIEF.inf);
+BRIEF.art = (g => (d, o) => { const w = d.arms[0]; return g(d, o) + (w.sal ? ' Este é um lançador de foguetes: segure o gatilho e ele dispara a salva inteira (' + w.sal + ' foguetes), espalhada, e depois leva ' + Math.round(w.rl) + ' s para carregar os tubos, menos com um caminhão do seu lado por perto. Atire e mude de lugar: a salva denuncia a posição, e a cúpula antifoguete inimiga derruba parte dela.' : ''); })(BRIEF.art);
 /* ---------- controllers (PAD): game pads and FPV radios over the Gamepad API ----------
    The one place that reads a device. Each frame padPoll reads every connected gamepad through its profile and writes the names the keys
    already write in S.input, plus the analogue ones the sim reads: ax ay (stick right, stick back), az (rudder, pedals, turn), thr (the

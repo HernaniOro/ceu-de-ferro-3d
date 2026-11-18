@@ -5,7 +5,8 @@
    welcome names what this server knows, so that a page can tell an older one: swap, inf, obj, sup (supply bases: base and build),
    trn (transport: the class trn, the sniper kits, and the messages board, seats, eject and cargo), cmd (the commander: the mortar kits,
    toss k 3 and 4, s on shot and aishot, and the message cmd), eco (the economy: eco, ecs, keep) and gen (the general: gen, glog, gclaim,
-   gctl, gcmd, gask, gres; messages private to a side go only to that side's players, and cmd too). */
+   gctl, gcmd, gask, gres; messages private to a side go only to that side's players, and cmd too) and sap (the sapper kits and the
+   messages mine, mboom and mreq). */
 const http = require('http'), fs = require('fs'), os = require('os'), path = require('path');
 const { WebSocketServer } = require('ws');
 
@@ -13,8 +14,8 @@ const PORT = +process.env.PORT || 8080, PAGE = path.join(__dirname, 'Céu de Fer
 /* valid models per room and class, the first half of each list on side 0 and the second on side 1; the page's PLANES, TANKS, AAS, ARTS and
    INF tables are the other copy. inf: the infantry kits, in the order an AI soldier's snapshot row names them by index */
 const MODELS = {
-  ww2: { plane: ['stuka', 'bf109', 'spit', 'p47'], tank: ['tiger', 'pz4', 'sherman', 't34'], aa: ['wirbel', 'm16'], art: ['hummel', 'priest'], inf: ['schutze', 'mgschutze', 'pzjager', 'scharf', 'grwTrupp', 'funker', 'rifleman', 'bargunner', 'bazookaman', 'sniper', 'mortarman', 'radioman'], trn: ['kubel', 'opel', 'sdkfz251', 'jeep', 'gmc', 'm3ht'] },
-  modern: { plane: ['f22', 'a10', 'su57', 'su25'], tank: ['abrams', 'leo2', 't90', 't72'], aa: ['nasams', 'pantsir'], art: ['pzh', 'msta'], inf: ['blueRifle', 'blueSaw', 'blueAT', 'blueAD', 'blueSniper', 'blueMortar', 'blueRadio', 'redRifle', 'redMG', 'redAT', 'redAD', 'redSniper', 'redMortar', 'redRadio'], trn: ['hmmwv', 'hemtt', 'lav25', 'm577', 'tigr', 'ural', 'btr82', 'mtlbu'] }
+  ww2: { plane: ['stuka', 'bf109', 'spit', 'p47'], tank: ['tiger', 'pz4', 'sherman', 't34'], aa: ['wirbel', 'm16'], art: ['hummel', 'pzwerfer', 'priest', 'bm13'], inf: ['schutze', 'mgschutze', 'pzjager', 'scharf', 'grwTrupp', 'funker', 'rifleman', 'bargunner', 'bazookaman', 'sniper', 'mortarman', 'radioman'], trn: ['kubel', 'opel', 'sdkfz251', 'jeep', 'gmc', 'm3ht'] },
+  modern: { plane: ['f22', 'a10', 'su57', 'su25'], tank: ['abrams', 'leo2', 't90', 't72'], aa: ['nasams', 'pantsir'], art: ['pzh', 'm270', 'msta', 'bm21'], inf: ['blueRifle', 'blueSaw', 'blueAT', 'blueAD', 'blueSniper', 'blueMortar', 'blueRadio', 'redRifle', 'redMG', 'redAT', 'redAD', 'redSniper', 'redMortar', 'redRadio'], trn: ['hmmwv', 'hemtt', 'lav25', 'm577', 'tigr', 'ural', 'btr82', 'mtlbu'] }
 };
 /* helicopters: aircraft to every check of an AI row or a loss, a class of their own to join, swap and hstate. None in 1944 */
 MODELS.ww2.heli = []; MODELS.modern.heli = ['ah64', 'uh60', 'mi28', 'mi8'];
@@ -37,6 +38,7 @@ const LOADS = {
 };
 const STW = { gbu39: 130, agm65: 300, kh38: 520, kh25: 300, aim120: 160, aim9: 86, r77: 190, r73: 105, s8: [15, 20], mk82: 227, mk83: 450, fab250: 250, fab500: 500, mk84: 925, aim9x: 85, cbu87: 430, rbk500: 500, gbu12: 277, gbu32: 470, kab500: 525, hydra: [14, 7], sc50: 50, sc250: 250, sc500: 500, sc1000: 1000, ab250: 220, wgr21: 110, lb250: 113, lb500: 227, lb1000: 454, hvar: [64, 2], ammo20: 80, ammo50: 80, kab500kr: 520, hellfire: [49, 4], hellfirel: [50, 4], ataka: [50, 4], hydra19: [14, 19], s13: [69, 5], atas: [16, 2], iglav: [18, 2], ammo30: 210, ammo762: 40 };
 const NST = Object.keys(STW).length;
+const FKINDS = 6;   // the kinds of work fort and fbuild carry
 const rooms = { ww2: new Map(), modern: new Map() };
 for (const era in MODELS) { const m = MODELS[era]; rooms[era].host = null; rooms[era].gen = [0, 0]; rooms[era].genk = [0, 0]; rooms[era].gens = new Set(); rooms[era].keep = null; rooms[era].models = m; rooms[era].air = new Set(m.plane); rooms[era].gnd = new Set([...m.tank, ...m.aa, ...m.art, ...m.trn, 'truck']); rooms[era].inf = new Set(m.inf); }
 for (const era in MODELS) for (const id of MODELS[era].heli) rooms[era].air.add(id);
@@ -122,7 +124,7 @@ const RX = {
     if (room.size === 0) room.mv = mv;
     else if (mv !== room.mv && !(room.mv === 1 && m.mv1 === 1)) return send(c.ws, { t: 'error', code: 'map' });
     c.room = room; room.set(c.player.id, c); if (!room.host) { room.host = c; room.ff = 0; for (const g of room.gens) send(g.ws, { t: 'host', id: c.player.id }); }
-    send(c.ws, room.wf = { t: 'welcome', dr: 1, id: c.player.id, host: room.host.player.id, swap: 1, inf: 1, obj: 1, sup: 1, hl: 1, lo: 1, hlo: 1, trn: 1, cmd: 1, crew: 1, cap: 1, ms: 1, cq: 1, bld: 1, she: 1, civ: 1, eco: 1, gen: 1, gn: room.gen, gk: room.genk, cqn: room.cqn || 0, ff: room.ff || 0, mv: room.mv || 1, gc: 2, players: [...room.values()].map(o => o.player) });
+    send(c.ws, room.wf = { t: 'welcome', dr: 1, id: c.player.id, host: room.host.player.id, swap: 1, inf: 1, obj: 1, sup: 1, hl: 1, lo: 1, hlo: 1, trn: 1, cmd: 1, crew: 1, cap: 1, ms: 1, cq: 1, bld: 1, she: 1, civ: 1, eco: 1, gen: 1, gn: room.gen, gk: room.genk, cqn: room.cqn || 0, ff: room.ff || 0, mv: room.mv || 1, gc: 2, sap: 1, players: [...room.values()].map(o => o.player) });
     send(c.ws, { t: 'fcap', v: 1 });   // this server knows fort and fbuild (trenches and sandbags)
     send(c.ws, { t: 'dcap', v: 1 });   // and the longer damage model
     cast(c, { t: 'joined', player: c.player });
@@ -247,13 +249,14 @@ const RX = {
     c.bt = now; send(h.ws, { t: 'build', from: c.player.id, p: m.p, a: m.a });
   },
   /* trenches and sandbags built during the match are the host's too: its list comes in parts i of n, a row each, [id, kind (1 trench,
-     2 sandbags), side, x, z, facing, percent built, hp, stage]; a soldier's request for one goes to the host alone, 700 ms apart at least */
+     2 sandbags, and with sap: 1 the posts, 3 anti-tank, 4 machine gun, 5 sniper tower, 6 anti-rocket dome), side, x, z, facing, percent
+     built, hp, stage]; a soldier's request for one goes to the host alone, 700 ms apart at least */
   fort(c, m) {
-    if (host(c) && Number.isInteger(m.i) && Number.isInteger(m.n) && m.i >= 0 && m.i < m.n && m.n <= 8 && Array.isArray(m.e) && m.e.length <= 40 && m.e.every(e => vec(e, 9) && Number.isInteger(e[0]) && e[0] >= 0 && e[0] < 65536 && (e[1] === 1 || e[1] === 2) && (e[2] === 0 || e[2] === 1) && e[6] >= 0 && e[6] <= 100 && (e[8] === 0 || e[8] === 1 || e[8] === 2))) cast(c, { t: 'fort', i: m.i, n: m.n, e: m.e });
+    if (host(c) && Number.isInteger(m.i) && Number.isInteger(m.n) && m.i >= 0 && m.i < m.n && m.n <= 8 && Array.isArray(m.e) && m.e.length <= 40 && m.e.every(e => vec(e, 9) && Number.isInteger(e[0]) && e[0] >= 0 && e[0] < 65536 && Number.isInteger(e[1]) && e[1] >= 1 && e[1] <= FKINDS && (e[2] === 0 || e[2] === 1) && e[6] >= 0 && e[6] <= 100 && (e[8] === 0 || e[8] === 1 || e[8] === 2))) cast(c, { t: 'fort', i: m.i, n: m.n, e: m.e });
   },
   fbuild(c, m) {
     const h = c.room.host, now = Date.now();
-    if (h === c || c.player.cls !== 'inf' || (m.k !== 1 && m.k !== 2) || !vec(m.p, 2) || !num(m.a) || now - (c.ft || 0) < 700) return;
+    if (h === c || c.player.cls !== 'inf' || !(Number.isInteger(m.k) && m.k >= 1 && m.k <= FKINDS) || !vec(m.p, 2) || !num(m.a) || now - (c.ft || 0) < 700) return;
     c.ft = now; send(h.ws, { t: 'fbuild', from: c.player.id, k: m.k, p: m.p, a: m.a });
   },
   /* transport. board: a soldier asks the owner of vehicle v for a seat (s 0) or says it is out (s -1): the player whose vehicle it is, or
@@ -483,6 +486,33 @@ RX.gres = (c, m) => {
   const o = host(c) && pid(m.to) && members(c.room).find(o => o.player.id === m.to);
   if (o && o !== c && int(m.n, 0, 1e9) && typeof m.ok === 'boolean' && txt(m.why, 12) && Number.isInteger(m.id)) send(o.ws, Object.assign({ t: 'gres', n: m.n, ok: m.ok, why: m.why, id: m.id }, m.r !== undefined && (rec(m.r) || Array.isArray(m.r)) && { r: m.r }));
 };
+/* sappers (welcome says sap: 1): the sapper kits, and three messages. mine: the host's list of the mines, in parts i of n of list q, a row
+   each, [id, kind (0 AT, 1 AP), side, x, z, known (bit s: side s knows it)]; each player is passed only the rows of its side's mines and of
+   those its side knows, a spectator all of them. mboom: the host says mine id (kind k, side s) went off at p, to the room. mreq: a soldier
+   to the host, k 0 or 1 lay one at p, 2 lift id, 3 its own body or vehicle set id off; 300 ms apart at least */
+{
+  const kits = { ww2: ['pionier', 'engineer'], modern: ['blueEng', 'redEng'] };
+  for (const era in kits) {
+    const m = MODELS[era].inf, k = kits[era];
+    if (m.includes(k[0])) throw new Error('sapper kits already there');
+    m.splice(m.length / 2, 0, k[0]); m.push(k[1]); for (const id of k) rooms[era].inf.add(id);
+  }
+  const row = e => vec(e, 6) && Number.isInteger(e[0]) && e[0] > 0 && e[0] < 65536 && (e[1] === 0 || e[1] === 1) && (e[2] === 0 || e[2] === 1) && Number.isInteger(e[5]) && e[5] >= 0 && e[5] < 4;
+  RX.mine = (c, m) => {
+    if (!host(c) || !Number.isInteger(m.q) || m.q < 0 || m.q >= 1e6 || !Number.isInteger(m.i) || !Number.isInteger(m.n) || m.i < 0 || m.i >= m.n || m.n > 4 || !Array.isArray(m.e) || m.e.length > 40 || !m.e.every(row)) return;
+    for (const o of members(c.room)) {
+      if (o === c) continue;
+      const s = sideOf(o), e = o.spec ? m.e : m.e.filter(r => r[2] === s || (s >= 0 && r[5] >> s & 1));
+      send(o.ws, { t: 'mine', q: m.q, i: m.i, n: m.n, e });
+    }
+  };
+  RX.mboom = (c, m) => { if (host(c) && Number.isInteger(m.id) && m.id > 0 && m.id < 65536 && (m.k === 0 || m.k === 1) && (m.s === 0 || m.s === 1) && vec(m.p, 2)) cast(c, { t: 'mboom', id: m.id, k: m.k, s: m.s, p: m.p }); };
+  RX.mreq = (c, m) => {
+    const h = c.room.host, now = Date.now(), lay = (m.k === 0 || m.k === 1) && vec(m.p, 2), id = (m.k === 2 || m.k === 3) && Number.isInteger(m.id) && m.id > 0 && m.id < 65536;
+    if (!h || h === c || (c.player.cls !== 'inf' && !(m.k === 3 && id)) || !(lay || id) || now - (c.mrq || 0) < 300) return;
+    c.mrq = now; send(h.ws, Object.assign({ t: 'mreq', from: c.player.id, k: m.k }, lay ? { p: m.p } : { id: m.id }));
+  };
+}
 const server = http.createServer((req, res) => {
   if (req.method !== 'GET' || req.url.split('?')[0] !== '/') { res.writeHead(404, { 'content-type': 'text/plain; charset=utf-8' }); return res.end('404'); }
   fs.readFile(PAGE, (err, buf) => {

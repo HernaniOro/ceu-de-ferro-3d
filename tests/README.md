@@ -28,6 +28,7 @@ sh tests/all.sh             # as suites rápidas em sequência contra o par publ
 node tests/crew.js  crew-relay.js  crew-online.js        # tripulação: descer, entrar, veículo estacionado, troca de dono pelo servidor
 node tests/transport.js  transport-relay.js  transport-online.js   # transporte e atirador de elite
 node tests/forts.js  forts-relay.js  forts-online.js     # trincheiras e sacos de areia
+node tests/sappers.js  posts.js  sappers-relay.js  sappers-online.js   # sapadores e minas, sabotagem, postos guarnecidos, torre, cúpula antifoguete e lançadores de foguetes
 node tests/city.js  city-online.js  woods.js             # prédios das vilas e matas
 node tests/seat.js          # mapa v5: a cidade-sede junto de cada base, os lotes, as instalações neles e o disfarce até serem identificadas
 node tests/damage.js  damage-relay.js  missiles.js       # dano por peças, blindagem e o modelo dos mísseis

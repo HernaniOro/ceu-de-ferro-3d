@@ -13,7 +13,7 @@ npm start
 
 Abra `http://localhost:8080`. Para outra porta, `PORT=9000 npm start`. O jogo precisa do servidor: toda partida é numa sala, e quem entra sozinho joga contra a IA. Abrir `Céu de Ferro 3D.html` direto, sem servidor, mostra só o hangar e o aviso de como iniciar o servidor.
 
-Depois de atualizar o jogo, reinicie o servidor: a página nova funciona com um servidor antigo, mas sem o que ele não conhece (conquista, requisição, rádios, drones, tripulação, obras, economia, general, espectador).
+Depois de atualizar o jogo, reinicie o servidor: a página nova funciona com um servidor antigo, mas sem o que ele não conhece (conquista, requisição, rádios, drones, tripulação, obras, sapadores, minas, postos, lançadores de foguetes, economia, general, espectador).
 
 ## Três jeitos de entrar
 
@@ -73,9 +73,9 @@ Na Frente de 1944 jogam a Luftwaffe e os Aliados; na Frente atual, a Força Azul
 - **Helicóptero** (só hoje). AH-64D e UH-60M pela Azul, Mi-28N e Mi-8AMTSh pela Vermelha. Paira, sobe e desce na vertical, voa de lado e de ré; sem tecla ele se estabiliza. O de ataque tem canhão em torre que segue a mira, foguetes e míssil guiado; o de transporte leva um pelotão (G embarca e desembarca, pousado) e tem metralhadoras nas portas. O rotor não pode encostar em nada. Pouse devagar: o mundo passa uma vez e meia mais depressa do que o velocímetro indica, então comece o arredondamento mais alto. Pousado e parado ao lado da pista, rearma e repara.
 - **Tanque.** Dois por lado. Canhão com projétil de verdade, perfurante ou explosivo (tecla V; cada um com a sua munição), e metralhadora. O perfurante é para blindados; o explosivo, mais lento e com mais queda, estilhaça soldados a céu aberto, caminhões, carros, casas, trincheiras e sacos de areia, e quase não fere a blindagem de um tanque, só nas lagartas, miras e peças expostas. A IA escolhe a carga pelo alvo. Online, exige o servidor novo (sem ele, só perfurante). A blindagem vale pela face: frente grossa, lados mais finos, traseira e teto finos.
 - **Antiaérea.** Em 1944, canhão automático e granada de tempo. Hoje, míssil guiado e canhão de 30 mm, que também derrubam mísseis ar-solo.
-- **Artilharia.** Obuseiro autopropulsado: tiro direto pela luneta ou indireto pelo mapa de tiro (M), por cima dos morros, até 6 km em 1944 e 12 km hoje. Só atira parado, a granada leva de 10 s a quase um minuto para cair, e no mapa só aparecem os inimigos que alguém do seu lado está vendo.
+- **Artilharia.** Obuseiro autopropulsado: tiro direto pela luneta ou indireto pelo mapa de tiro (M), por cima dos morros, até 6 km em 1944 e 12 km hoje. Só atira parado, a granada leva de 10 s a quase um minuto para cair, e no mapa só aparecem os inimigos que alguém do seu lado está vendo. Cada lado tem também um lançador de foguetes: Panzerwerfer 42 e BM-13 Katyusha em 1944, M270 MLRS e BM-21 Grad hoje. Segurando o gatilho ele dispara a salva inteira (de 10 a 40 foguetes, espalhados), e depois leva 60 s para carregar os tubos, menos com um caminhão do lado por perto.
 - **Transporte.** Carro leve, caminhão, veículo-rádio e, hoje, blindado sobre rodas (anfíbio, com canhão automático). Quem entra de Transporte é um soldado ao volante: E desce e o veículo fica estacionado para qualquer soldado do lado, com o dano e a munição que tinha. Ao volante, F chama a bordo os pelotões aliados próximos ou manda descer. O caminhão remunicia soldados ao lado e acelera a obra de uma base.
-- **Infantaria.** Um cartão por kit: fuzileiro, metralhador, anticarro, antiaéreo (hoje), atirador de elite, morteiro, operador de rádio e operador de drone (hoje). Todos levam granadas de mão e de fumaça e constroem (N). Com E o soldado entra em carro, caminhão ou blindado aliado estacionado: motorista, senão atirador, senão passageiro.
+- **Infantaria.** Um cartão por kit: fuzileiro, metralhador, anticarro, antiaéreo (hoje), atirador de elite, morteiro, operador de rádio, operador de drone (hoje) e sapador. Todos levam granadas de mão e de fumaça e constroem (N). Com E o soldado entra em carro, caminhão ou blindado aliado estacionado: motorista, senão atirador, senão passageiro.
 
 **Kits.** Fuzil e metralhadora não fazem nada na blindagem de um tanque. Panzerfaust, Bazooka e RPG são cargas ocas sem guia, melhores pelo flanco e pela traseira; o Javelin trava no alvo e cai no teto; Stinger e Igla buscam o calor e são enganados por flares. O atirador de elite tem luneta com queda do projétil, prende o fôlego com Shift e, hoje, fere veículos leves com o .50. O morteiro (Q pega, M abre o mapa, V troca entre explosiva e fumaça) atira de 150 m a 3 km.
 
@@ -100,16 +100,32 @@ Dois modos de levar a entrada da infantaria para perto da luta. Valem só para s
 
 A entrada é recusada com inimigo a menos de 150 m, com o rádio atingido nos últimos 6 s, com o operador pregado no chão ou longe do rádio, ou sem entradas. O rádio pousado some se um inimigo chega a 10 m dele ou se uma explosão o destrói. O seu lado vê os próprios rádios nos mapas (quadrado branco) e na tela; um rádio inimigo avistado aparece em vermelho, e a IA o trata como alvo de valor: artilharia e morteiros batem o rádio pousado, e tanques, aviões de ataque, helicópteros e operadores de FPV dão preferência ao veículo-rádio. O comandante da IA mantém um veículo-rádio por lado, atrás do ponto que ataca, com um pelotão de guarda.
 
-## Obras: bases, trincheiras e sacos de areia
+## Obras: bases, trincheiras, sacos de areia e postos
 
-De soldado, N mostra o contorno da obra à frente, verde onde pode e vermelho com o motivo onde não pode. Cada toque em N passa para a próxima obra (base de suprimento, trincheira, sacos de areia) e depois fecha; o clique começa e o botão direito cancela. Para construir, fique parado junto da obra; outros soldados ao lado aceleram e um tiro recebido interrompe.
+De soldado, N mostra o contorno da obra à frente, verde onde pode e vermelho com o motivo onde não pode. Cada toque em N passa para a próxima obra (base de suprimento, trincheira, sacos de areia, posto anticarro, ninho de metralhadora, torre de sniper, cúpula antifoguete; o sapador segue para a mina anticarro e a antipessoal) e depois fecha; o clique começa e o botão direito cancela. Para construir, fique parado junto da obra; outros soldados ao lado aceleram e um tiro recebido interrompe.
 
 - **Base de suprimento.** Gasta o kit de construção (um por soldado, reposto numa base). Três por lado. Leva 70 s sozinho. Pronta, remunicia e repara por inteiro soldados e veículos de solo do lado a até 70 m, é ponto de entrada e depósito de requisição. Tem 230 pontos: canhão, foguete, bomba e obuseiro a destroem, e encostado nela N arma a carga de demolição (duas bastam).
 - **Trincheira** (40 s). Em pé, só a cabeça aparece; agachado ou deitado o soldado some. Explosão fora quase não fere, granada dentro mata. Tanque cruza devagar, veículo de rodas só pelas pranchas.
 - **Sacos de areia** (12 s). Protegem do lado em que estão; tanque passa por cima.
 - **Carga na parede.** De frente para a parede de um prédio, N arma a carga que abre um buraco.
+- **Posto anticarro** (45 s; até 3 por lado) e **ninho de metralhadora** (25 s; até 4). Sacos de areia com uma arma de reparo: PaK 40 ou canhão de 57 mm em 1944 e TOW-2 ou Kornet hoje no posto anticarro; MG 42 ou M1919 e M2 .50 ou Kord no ninho. Pronto, ganha uma guarnição de dois soldados da IA. Quem do lado estiver no posto opera a arma no lugar da sua (o jogador antes da IA), com a munição do posto, e ao sair tem a sua de volta.
+- **Torre de sniper** (40 s; até 2). Quem do lado chega ao pé dela sobe à plataforma, com o olho a uns 11 m, e desce ao sair dela. Pronta, ganha um atirador de elite da IA.
+- **Cúpula antifoguete** (só hoje; 150 s; até 2). Radar e interceptores: derruba granadas de obuseiro e de morteiro, foguetes dos lançadores e mísseis guiados contra alvos no solo que vão cair a até 2 km dela, um a cada 0,25 s, de um carregador de 20 que se recarrega devagar. Uma salva grande a satura. Com a economia ligada, custa 300 de energia e 400 de metal, e cada interceptor gasta 15 de metal; os postos também custam (40/60, 15/25 e 20/30). O radar mostra ao lado dela quem atirou.
 
 Cada lado já começa com trincheiras nos postos de linha e na frente das vilas, e a IA ergue uma base avançada no primeiro minuto.
+
+## Sapadores e minas
+
+O sapador (Pionier e Combat Engineer em 1944, Sapador Azul e Sapyor Vermelho hoje) leva submetralhadora, 3 cargas de demolição e minas: 3 anticarro e 5 antipessoal (Tellermine 43 e S-Mine 35, M1A1 e M2, M15 e M18A1 Claymore, TM-62 e MON-50). N passa pelas obras até as minas, e o clique arma uma 2 m à frente, pronta em 3 s. Não se arma mina na estrada perto da própria base, a menos de 3 m de outra, nem com inimigo a 25 m. Cada lado tem até 30 minas no chão.
+
+- **A mina anticarro** explode com veículo inimigo em cima: quebra a lagarta ou as rodas daquele lado e fere o casco. **A antipessoal** explode com soldado inimigo a pé.
+- **Só o seu lado vê as suas minas.** O inimigo as vê quando um sapador dele, a pé e sem correr, chega a 25 m (o detector) ou quando uma explode; o lugar de cada explosão fica como campo suspeito para quem caiu nela.
+- **V**, parado ao lado de uma mina que o seu lado conhece, a desarma em 4 s; uma do seu lado volta para a bolsa.
+- **Sabotagem.** Além de bases e instalações, a carga do sapador derruba um veículo inimigo parado, uma antiaérea fixa ou um rádio pousado.
+- Cargas e minas voltam num depósito.
+- Online, quando o anfitrião sai, o servidor passa só ao novo anfitrião a lista inteira de minas: nenhuma se perde, nem as escondidas do outro lado.
+
+O uso dos sapadores, dos postos e do Grad pelo general da IA ainda não existe.
 
 ## Dano, reparo e fumaça
 

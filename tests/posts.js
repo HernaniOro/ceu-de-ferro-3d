@@ -59,7 +59,12 @@ for (const era of ['ww2', 'modern']) {
   ok(mg.gm === P && P.arms[0].d === gun(mg) && was && was.arms[0].d !== gun(mg), era + ': the player who steps into a manned post takes the gun over, and the soldier there has his rifle back');
   const rounds = mg.ga.mag + mg.ga.res; P.x -= 30; C.run(.3); P.x += 30; C.run(.3);
   ok(mg.gm === P && mg.ga.mag + mg.ga.res === rounds, era + ': the gun keeps its own rounds: stepping out and back in does not fill it');
-  S.my = null;
+  S.my = null; P.x -= 30; C.run(.3); const ai = mg.gm;
+  const R = C.addMan($('INF')[era][0][0], 0, P.x + 30, P.z, 0); R.ai = null; R.net = true; R.pid = 9; R.v = { x: 0, y: 0, z: 0 }; R.snap = { x: R.x, z: R.z, h: 0, ap: 0, age: 0 }; C.run(.3);
+  ok(ai && !ai.pid && mg.gm === R && R.arms[0].d === gun(mg) && ai.arms[0].d !== gun(mg), era + ': another client\'s player (a ghost here) who steps in takes the gun from the AI soldier, as he does on his own client');
+  P.x += 30; S.my = P; C.run(.3);
+  ok(mg.gm === R && P.arms[0].d !== gun(mg), era + ': and keeps it when this client\'s player steps in after him');
+  S.my = null; P.x -= 30; R.x = R.snap.x += 30; C.run(.3);
   const t0 = tw.garr.men[0]; t0.x = tw.x + 30; C.run(.3); const down = !t0.tw && Math.abs(t0.y - $('manY')(t0.x, t0.z)) < .01;
   t0.x = tw.x + tw.o.hw + 1.5; t0.z = tw.z; C.run(.3);
   ok(down && t0.tw === tw && Math.abs(t0.x - tw.x) <= tw.o.hw, era + ': stepped off the platform he is on the ground; from beside the tower he climbs back onto it');
@@ -93,8 +98,10 @@ function salvo(c, S, p, n) {
   console.log('   a salvo of ' + L.length + ' rockets at a dome (' + fell + ' come down within ' + POSTS.dome.r + ' m): it fired ' + D.ds + ' interceptors and stopped ' + D.dk + '; magazine ' + POSTS.dome.mag + ', ' + D.dm + ' left');
   ok(D.dk >= 10 && D.dk < fell && D.ds <= POSTS.dome.mag + 12, 'the dome stops part of the salvo: its magazine of ' + POSTS.dome.mag + ' and its rate are overwhelmed by ' + L.length + ' rockets');
   ok(u.seenT > seen0, 'its radar shows its side the launcher that fired');
-  const C2 = H.load({ seed: 999 }), S2 = fresh('modern', C2), p2 = flat(3, C2), D2 = build(6, 0, p2.x, p2.z, 0, C2), r2 = salvo(C2, S2, p2, 40); C2.run(60);
-  ok(D2.dk === D.dk && r2.L.every((b, i) => !!b.dj === !!L[i].dj), 'another client with other dice stops the very same rounds (' + D2.dk + ')');
+  const C2 = H.load({ seed: 999 }), S2 = fresh('modern', C2), p2 = flat(3, C2), D2 = build(6, 0, p2.x, p2.z, 0, C2), r2 = salvo(C2, S2, p2, 40); C2.run(60, null, 1 / 47);
+  const stopped = (c, b) => b.dj && b.gone && b.y - c.hgt(b.x, b.z) > POSTS.dome.low / 2, both = L.map((b, i) => i).filter(i => L[i].dj && r2.L[i].dj);
+  console.log('   another client stepping at 47 Hz instead of 60 engages ' + D2.ds + ' rounds, ' + both.length + ' of them the same as here');
+  ok(both.length >= 10 && both.every(i => stopped(C, L[i]) === stopped(C2, r2.L[i])), 'another client, with other dice and another frame rate, stops every round both engage alike, or lets it through alike');
   const own = salvo(C, S, p, 1).L[0]; own.team = 0; C.run(60); ok(!own.dj, 'it lets its own side\'s rounds through');
 }
 {
@@ -102,6 +109,11 @@ function salvo(c, S, p, n) {
   const p = flat(3, E), d = S3.eco.d[0]; d.en = 1000; d.mt = 1000; const D = build(6, 0, p.x, p.z, 0, E); d.mt = POSTS.dome.mt * 3 + 5;
   const r = salvo(E, S3, p, 10); E.run(60);
   ok(D.ds === 3 && d.mt < POSTS.dome.mt, 'every interceptor costs ' + POSTS.dome.mt + ' metal; with none left the dome is silent (' + D.ds + ' shots at 10 rounds with metal for 3)');
+  const G = H.load({ seed: 7, eco: true }), S4 = ecoState(G, 'modern'); S = S4; T = S4.T;
+  const p4 = flat(3, G), d4 = S4.eco.d[0], D4 = build(6, 0, p4.x, p4.z, 0, G); S4.net = true; S4.host = false; d4.mt = POSTS.dome.mt - 1;
+  salvo(G, S4, p4, 10); G.run(60);
+  const ds0 = D4.ds || 0; d4.mt = 1000; salvo(G, S4, p4, 10); G.run(60);
+  ok(!ds0 && D4.ds > 0 && d4.mt === 1000, 'on a guest the dome goes by its side\'s metal as the host told it: short of it, silent there too; with it, it fires and spends none (' + D4.ds + ' shots)');
 }
 
 console.log('-- the rocket launchers --');

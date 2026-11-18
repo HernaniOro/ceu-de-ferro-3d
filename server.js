@@ -320,7 +320,7 @@ RX.cq = (c, m) => {
   if (!host(c) || !int(m.n, 0, 1e6) || (m.ph !== 0 && m.ph !== 1) || !num(m.T) || !vec(m.k, 2) || !num(m.k0) || !int(m.len, 0, 2) || !Array.isArray(m.p) || m.p.length > 64 || m.p.length % 4 || !m.p.every(v => int(v, -1000, 1000)) || !vec(m.l, 6)) return;
   const o = { t: 'cq', n: m.n, ph: m.ph, T: m.T, k: m.k, k0: m.k0, len: m.len, p: m.p, l: m.l };
   if (m.ph === 1 && vec(m.r, 2) && int(m.r[0], -1, 1) && int(m.r[1], 0, 3)) { o.r = m.r; o.w = num(m.w) ? m.w : 0; }
-  if (m.n !== (room.cqn || 0)) { room.cqn = m.n; room.keep = null; for (const q of room.values()) q.player.kills = q.player.deaths = q.player.ai = 0; scores(c); }
+  if (m.n !== (room.cqn || 0)) { room.cqn = m.n; room.keep = room.mines = null; for (const q of room.values()) q.player.kills = q.player.deaths = q.player.ai = 0; scores(c); }
   cast(c, o);
 };
 RX.req = (c, m) => {
@@ -488,7 +488,8 @@ RX.gres = (c, m) => {
 };
 /* sappers (welcome says sap: 1): the sapper kits, and three messages. mine: the host's list of the mines, in parts i of n of list q, a row
    each, [id, kind (0 AT, 1 AP), side, x, z, known (bit s: side s knows it)]; each player is passed only the rows of its side's mines and of
-   those its side knows, a spectator all of them. mboom: the host says mine id (kind k, side s) went off at p, to the room. mreq: a soldier
+   those its side knows, a spectator all of them. The server keeps the host's last whole list, and s its last mine id, and hands them to
+   the next host alone, before it is named, so that no side's hidden mines are lost with the old host. mboom: the host says mine id (kind k, side s) went off at p, to the room. mreq: a soldier
    to the host, k 0 or 1 lay one at p, 2 lift id, 3 its own body or vehicle set id off; 300 ms apart at least */
 {
   const kits = { ww2: ['pionier', 'engineer'], modern: ['blueEng', 'redEng'] };
@@ -500,6 +501,9 @@ RX.gres = (c, m) => {
   const row = e => vec(e, 6) && Number.isInteger(e[0]) && e[0] > 0 && e[0] < 65536 && (e[1] === 0 || e[1] === 1) && (e[2] === 0 || e[2] === 1) && Number.isInteger(e[5]) && e[5] >= 0 && e[5] < 4;
   RX.mine = (c, m) => {
     if (!host(c) || !Number.isInteger(m.q) || m.q < 0 || m.q >= 1e6 || !Number.isInteger(m.i) || !Number.isInteger(m.n) || m.i < 0 || m.i >= m.n || m.n > 4 || !Array.isArray(m.e) || m.e.length > 40 || !m.e.every(row)) return;
+    const r = c.room, b = m.i && r.mbuf && r.mbuf.q === m.q ? r.mbuf : (r.mbuf = { q: m.q, n: m.n, s: 0, e: [] });
+    b.e.push(...m.e); if (Number.isInteger(m.s) && m.s >= 0 && m.s < 65536) b.s = m.s;
+    if (m.i === m.n - 1) { r.mines = b; r.mbuf = null; }
     for (const o of members(c.room)) {
       if (o === c) continue;
       const s = sideOf(o), e = o.spec ? m.e : m.e.filter(r => r[2] === s || (s >= 0 && r[5] >> s & 1));
@@ -513,6 +517,7 @@ RX.gres = (c, m) => {
     c.mrq = now; send(h.ws, Object.assign({ t: 'mreq', from: c.player.id, k: m.k }, lay ? { p: m.p } : { id: m.id }));
   };
 }
+function mineKeep(room) { const K = room.mines, n = Math.ceil(K.e.length / 40) || 1; for (let i = 0; i < n; i++) send(room.host.ws, { t: 'mine', q: K.q, i, n, e: K.e.slice(i * 40, (i + 1) * 40), s: K.s }); }
 const server = http.createServer((req, res) => {
   if (req.method !== 'GET' || req.url.split('?')[0] !== '/') { res.writeHead(404, { 'content-type': 'text/plain; charset=utf-8' }); return res.end('404'); }
   fs.readFile(PAGE, (err, buf) => {
@@ -542,11 +547,11 @@ wss.on('connection', ws => {
     if (c.spec) { room.specs.delete(c); return; }
     if (c.gen) { room.gens.delete(c); return genFree(room, c); }
     room.delete(c.player.id); cast(c, { t: 'left', id: c.player.id }); genFree(room, c);
-    if (!room.size) room.keep = null;
+    if (!room.size) room.keep = room.mines = null;
     if (room.size === 0) room.mv = 0;
     if (room.host !== c) return;
     room.host = room.values().next().value || null;
-    if (room.host) { if (room.keep) send(room.host.ws, { t: 'keep', e: room.keep }); cast(c, { t: 'host', id: room.host.player.id }); }   // the backup first: the page adopts on host
+    if (room.host) { if (room.keep) send(room.host.ws, { t: 'keep', e: room.keep }); if (room.mines) mineKeep(room); cast(c, { t: 'host', id: room.host.player.id }); }   // the backup first: the page adopts on host
     for (const g of room.gens) send(g.ws, { t: 'host', id: room.host ? room.host.player.id : 0 });
     if (!room.host) for (const o of room.specs) send(o.ws, { t: 'host', id: 0 });   // nobody left to play: the spectators are told
   });

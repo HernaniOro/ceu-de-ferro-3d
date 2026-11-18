@@ -13522,13 +13522,14 @@ walk = (g => (P, I, dt) => {
    list, a row each, [id, kind (0 AT, 1 AP), side, x, z, known (bit t: side t knows it)], in parts i of n (q counts the lists): the server
    passes each player only the rows of its side's mines and of those its side knows. mboom: the host says one went off (its id, kind, side
    and where), and every client bursts it for what it simulates. mreq: a guest's soldier to the host, k 0 or 1 lay one at p, 2 lift id,
-   3 its own body or vehicle set id off */
+   3 its own body or vehicle set id off. s: the host's last mine id, kept by the server with the whole list for the next host alone, which
+   gets both before it is named: it adopts every mine of both sides and never gives out an id that was used */
 const MROWS = 40;
 Object.assign(Net, { sap: false, mq: false, mqn: 0,
   mines() {
     const r = n => +n.toFixed(1), l = mines().filter(o => !o.gone).map(o => [o.id, o.k, o.team, r(o.x), r(o.z), o.kn & 3]), n = Math.ceil(l.length / MROWS) || 1;
     Net.mq = false; Net.mqn = (Net.mqn + 1) % 1e6;
-    for (let i = 0; i < n; i++) Net.send('mine', { q: Net.mqn, i, n, e: l.slice(i * MROWS, (i + 1) * MROWS) });
+    for (let i = 0; i < n; i++) Net.send('mine', { q: Net.mqn, i, n, e: l.slice(i * MROWS, (i + 1) * MROWS), s: S.mseq || 0 });
   } });
 Net.tick = (g => dt => { g(dt); if (S && S.net && S.host && Net.sap && Net.mq) Net.mines(); })(Net.tick);
 Net.rx.welcome = (g => m => { Net.sap = m.sap === 1; g(m); })(Net.rx.welcome);
@@ -13536,6 +13537,7 @@ Net.rx.joined = (g => m => { g(m); if (S && S.net && S.host && Net.sap) Net.mq =
 Net.adopt = (g => () => { g(); Net.mq = true; S.mseq = mines().reduce((a, o) => Math.max(a, o.id), S.mseq || 0); })(Net.adopt);
 Net.rx.mine = m => {
   if (!S || !S.net || S.host || !Array.isArray(m.e) || !Number.isInteger(m.i) || !Number.isInteger(m.n)) return;
+  if (Number.isInteger(m.s)) S.mseq = Math.max(S.mseq || 0, m.s);
   const b = m.i && S.mbuf && S.mbuf.q === m.q ? S.mbuf : (S.mbuf = { q: m.q, l: [] });
   for (const e of m.e) if (Array.isArray(e) && e.length === 6 && (e[1] === 0 || e[1] === 1) && (e[2] === 0 || e[2] === 1)) b.l.push(e);
   if (m.i !== m.n - 1) return;
@@ -13569,14 +13571,14 @@ Net.rx.mreq = m => {
    cover like a wall of sandbags. A finished post of side t gets a garrison where the match is simulated (once, tried again every `again` s
    until it fits: the garrisons may go room soldiers over the population cap IAI.cap, as many as the posts' caps can hold): a squad of kits garr (an index
    in the side's INF list, or 'snp' its sniper) that holds it (job fpost, q.wpost the work) and keeps to its places (gunner at the middle, the rest behind it).
-   gun: the post's weapon by era and side; whoever of its side stands in it first (the player before an AI soldier) fires it, in place of
+   gun: the post's weapon by era and side; whoever of its side stands in it first (a player, here or on another client, before an AI soldier) fires it, in place of
    the small arm (slot 0, the machine-gun nest) or the special (slot 1, the anti-tank post), with the post's own rounds, and has back what
    it carried when it steps out. Every client hands the weapon out alike, so a guest's copy of a soldier fires what the host's does.
    The tower: a soldier of its side who steps within ladder m of its footprint climbs onto its platform, eye m up, and comes down when he steps off it
    (the box of the work itself is only its foot, foot m high).
    The dome (modern only): radar and interceptors. A howitzer, mortar or rocket round of the other side that will come down within r m of
    it is engaged on its way down, one every gap s from a magazine of mag that loads again one every load s; each shot costs mt metal when
-   the economy is on, and stops the round with chance pk (f.ds counts its shots, f.dk what they stopped) (the same roll on every client: it is drawn from the round's launch numbers). A
+   the economy is on (a guest goes by its side's metal as the host last told it), and stops the round with chance pk (f.ds counts its shots, f.dk what they stopped) (the same roll on every client: it is drawn from where and when the round comes down, which its launch numbers fix). A
    guided missile for the ground within r m is engaged where the match is simulated. The radar shows its side who fired (the shooter is
    spotted). cost: [en, mt] paid when the work starts, where the economy is on; a side short of them cannot start it.
    MLRS: a launcher's salvo goes on while the trigger is held; its tubes load again `fast` times faster with a truck of its side within truck m */
@@ -13661,10 +13663,16 @@ fortMen = (g => dt => {
 function postMan(f) {
   const g = f.gm;
   if (g && (g.dead || g.in || g.fc !== f || g.team !== f.team)) { if (g.pa) postFree(g); f.gm = null; }
-  const P = S.my && S.my.man && !S.my.dead && !S.my.in && S.my.fc === f && S.my.team === f.team ? S.my : null;
-  if (f.gm && (!P || f.gm === P)) return;
-  let m = P;
-  if (!m) { let bd = 1e9; for (const o of S.men) if (!o.dead && !o.in && o.fc === f && o.team === f.team && !o.def.mort && !o.def.drone) { const d = hdist(o, f); if (d < bd) { bd = d; m = o; } } }
+  const pl = o => o === S.my || !!o.pid;
+  if (f.gm && pl(f.gm)) return;
+  let m = null, P = null, bd = 1e9, bp = 1e9;
+  for (const o of S.men) {
+    if (o.dead || o.in || o.fc !== f || o.team !== f.team) continue;
+    const d = hdist(o, f);
+    if (pl(o)) { if (d < bp) { bp = d; P = o; } } else if (!o.def.mort && !o.def.drone && d < bd) { bd = d; m = o; }
+  }
+  if (f.gm && !P) return;
+  m = P || m;
   if (!m || m === f.gm) return;
   if (f.gm) postFree(f.gm);
   const d = postGun(f); if (!d) return;
@@ -13688,14 +13696,14 @@ manThink = (g => m => {
   A.gx = p.x; A.gz = p.z; A.run = false; if (A.st === 2) A.st = 1;
 })(manThink);
 /* the dome, each step */
-const dRoll = b => { const v = Math.sin(b.x * 12.9898 + b.z * 78.233 + b.vx * 37.719 + b.vz * 11.131 + b.vy * 3.17) * 43758.5453; return v - Math.floor(v); };
+const dRoll = b => { const v = Math.sin(b.px * 12.9898 + b.pz * 78.233 + b.py * 37.719 + b.T * 11.131) * 43758.5453; return v - Math.floor(v); };
 function domeStep(dt) {
   const D = POSTS.dome, sim = !S.net || S.host;
   for (const f of S.forts) {
     if (f.k !== 6 || f.prog < 1 || f.gone || S.os[f.id] > 1) continue;
     if (f.dm === undefined) { f.dm = D.mag; f.dl = 0; f.dn = 0; }
     if (f.dm < D.mag && (f.dl += dt) >= D.load) { f.dl = 0; f.dm++; }
-    const pay = () => { if (!ecoSim() || !S.eco.d[f.team]) return true; const d = S.eco.d[f.team]; if (d.mt < D.mt) return false; d.mt -= D.mt; return true; };
+    const pay = () => { const d = S.eco && S.eco.d[f.team]; if (!d) return true; if (d.mt < D.mt) return false; if (ecoSim()) d.mt -= D.mt; return true; };
     for (const b of S.bombs) {
       if (b.k !== 'he' || b.gone || b.dj || b.team === f.team || b.px === undefined || Math.hypot(b.px - f.x, b.pz - f.z) > D.r || b.t < b.T * .5 || b.y - hgt(b.x, b.z) < D.low) continue;
       if (f.dm < 1 || S.t < f.dn) continue;

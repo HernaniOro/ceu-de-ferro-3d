@@ -123,6 +123,7 @@ O sapador (Pionier e Combat Engineer em 1944, Sapador Azul e Sapyor Vermelho hoj
 - **V**, parado ao lado de uma mina que o seu lado conhece, a desarma em 4 s; uma do seu lado volta para a bolsa.
 - **Sabotagem.** Além de bases e instalações, a carga do sapador derruba um veículo inimigo parado, uma antiaérea fixa ou um rádio pousado.
 - Cargas e minas voltam num depósito.
+- Online, quando o anfitrião sai, o servidor passa só ao novo anfitrião a lista inteira de minas: nenhuma se perde, nem as escondidas do outro lado.
 
 O uso dos sapadores, dos postos e do Grad pelo general da IA ainda não existe.
 

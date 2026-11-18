@@ -51,5 +51,16 @@ const N = require('./net'), { ok, done } = require('./harness');
   h.send({ t: 'fort', i: 0, n: 1, e: [row(7)] }); ok(await none(a, 'fort'), 'and no kind past them');
   await N.sleep(720); a.send({ t: 'fbuild', k: 6, p: [1, 2], a: 0 }); const fb = await h.wait('fbuild'); ok(fb && fb.k === 6, 'fbuild asks for one');
   await N.sleep(720); a.send({ t: 'fbuild', k: 7, p: [1, 2], a: 0 }); ok(await none(h, 'fbuild'), 'not for a kind that is none');
-  for (const c of [h, a, b, sp, tk]) c.close(); N.stop(); done();
+
+  /* the host leaves: the server hands its last whole list, every side's mines with the hidden ones and its last id, to the next host alone */
+  h.send({ t: 'mine', q: 20, i: 0, n: 2, e: [own0, own1], s: 77 }); h.send({ t: 'mine', q: 20, i: 1, n: 2, e: [known, both], s: 77 });
+  h.send({ t: 'mine', q: 21, i: 0, n: 2, e: [own0], s: 78 });
+  await N.sleep(120); for (const c of [a, b, sp, tk]) c.got.forEach(m => { m.seen = 1; });
+  h.close(); const nh = await a.wait('host', 1500);
+  const kept = a.got.filter(m => m.t === 'mine' && !m.seen), at = m => a.got.indexOf(m);
+  console.log('   the next host gets ' + kept.map(m => m.e.map(r => r[0]).join() + ' (s ' + m.s + ')').join('; '));
+  ok(nh && nh.id === a.id && kept.length === 1 && ids(kept[0]) === '11,12,13,14' && kept[0].s === 77 && at(kept[0]) < at(nh),
+    'the host leaves: the next host is sent the last whole mine list, the other side\'s hidden mine with it, and the last id, before it is named');
+  ok(await none(b, 'mine') && await none(sp, 'mine') && await none(tk, 'mine'), 'nobody else is sent the kept list');
+  for (const c of [a, b, sp, tk]) c.close(); N.stop(); done();
 })().catch(e => { console.error(e); N.stop(); process.exit(1); });

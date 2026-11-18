@@ -6,7 +6,7 @@ const N = require('./net'), { ok, done } = require('./harness');
   const join = async (cls, model) => { const c = await N.raw(); c.send({ t: 'join', room: 'modern', name: cls, cls, model }); c.w = await c.wait('welcome', 800); c.cap = await c.wait('fcap', 400); c.id = c.w && c.w.id; return c; };
   const none = async (c, t) => !(await c.wait(t, 150));
   const h = await join('tank', 'abrams'), a = await join('inf', 'blueRifle'), b = await join('inf', 'redAT');
-  ok(h.cap && h.cap.v === 1 && a.cap && a.cap.v === 1 && h.w.sup === 1 && h.w.obj === 1 && Object.keys(h.w).filter(k => k !== 'seen').sort().join() === 'host,id,inf,obj,players,sup,swap,t', 'everyone is told fcap v: 1 right after a welcome that is what it was');
+  ok(h.cap && h.cap.v === 1 && a.cap && a.cap.v === 1 && h.w.sup === 1 && h.w.obj === 1 && ['host', 'id', 'inf', 'obj', 'players', 'sup', 'swap', 't'].every(k => k in h.w), 'everyone is told fcap v: 1 right after a welcome that still has what it had');
   const row = [55100, 1, 0, 1234.5, -678.9, 1.57, 42, 150, 0], row2 = [55101, 2, 1, 5, 6, 0, 100, 12, 2];
   h.send({ t: 'fort', i: 0, n: 1, e: [row, row2] }); const f1 = await a.wait('fort'), f2 = await b.wait('fort');
   ok(f1 && f2 && f1.i === 0 && f1.n === 1 && f1.e.length === 2 && f1.e[0].join() === row.join() && f2.e[1].join() === row2.join() && await none(h, 'fort'), 'fort from the host reaches the room as it was sent, and not the host');

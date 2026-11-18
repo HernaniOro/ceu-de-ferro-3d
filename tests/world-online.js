@@ -9,7 +9,12 @@ async function client(name, cls, model) {
   c.name = name; c.$ = $; c.Net = Net; c.sent = {}; c.on = true; c.errs = 0;
   Net.send = (t, o) => { const k = t === 'ai' ? 'ai' + o.k : t; c.sent[k] = (c.sent[k] || 0) + JSON.stringify(Object.assign({ t }, o)).length; send(t, o); };
   await new Promise((res, rej) => {
-    Net.ui.welcome = () => { c.newState('modern', model, { net: true, cls, mouse: true, host: Net.host === Net.id }); res(); };
+    Net.ui.welcome = () => {
+      c.newState('modern', model, { net: true, cls, mouse: true, host: Net.host === Net.id });
+      /* the buildings stand in for plain boxes here, as in world.js: this suite is about obj and ohit (tests/city-online.js has bld and bhit) */
+      const S = $('S'), K = $('OBJ').house; for (const o of S.T.houses) { o.B = null; o.k = 'house'; o.K = K; o.hp = K.hp[0] + K.hp[1] * o.hw * o.hd * 4 * o.h; S.oh[o.id] = o.hp; }
+      res();
+    };
     Net.ui.refused = code => rej(new Error(name + ' refused: ' + code)); Net.connect('modern', name, cls, model);
   });
   Object.defineProperty(c, 'S', { get: () => $('S') }); c.id = Net.id; c.director = () => {}; all.push(c); return c;
@@ -32,7 +37,7 @@ const st = (c, o) => c.S.os[o.id], stages = c => { const l = []; for (const o of
   console.log('   the server ' + (knows ? 'knows' : 'does not know') + ' the world-object messages');
   ok(T.objs.length === g1.S.T.objs.length && T.objs.every((o, i) => { const q = g2.S.T.objs[i]; return q.id === o.id && q.x === o.x && q.z === o.z; }), 'every client built the same ' + T.objs.length + ' objects under the same ids');
   /* a house with level ground along its own x axis, as in world.js */
-  const site = T.houses.filter(o => { const ux = o.c, uz = -o.s; return [60, 120, -8, -30].every(d => Math.abs(host.hgt(o.x + ux * (o.hw + d) * Math.sign(d || 1) * Math.sign(d), o.z + uz * (o.hw + d)) - o.y) < 2.5) && !T.objs.some(q => q !== o && q.k !== 'tree' && [20, 50, 80, 110].some(d => F(q, o.x + ux * (o.hw + d), o.z + uz * (o.hw + d)) < 7) || F(q, o.x - ux * (o.hw + 8), o.z - uz * (o.hw + 8)) < 8); }).sort((a, b) => a.hp - b.hp)[0];
+  const site = T.houses.filter(o => { const ux = o.c, uz = -o.s; return o.h >= 8 && [60, 120, -8, -30].every(d => Math.abs(host.hgt(o.x + ux * (o.hw + d) * Math.sign(d || 1) * Math.sign(d), o.z + uz * (o.hw + d)) - o.y) < 2.5) && ![-8, 4, 10, 16, 22, 28, 34, 40, 46, 52, 58, 64, 70, 76, 82, 88, 94, 100, 106, 112, 118].some(d => host.near(o.x + ux * (d < 0 ? -o.hw + d : o.hw + d), o.z + uz * (d < 0 ? -o.hw + d : o.hw + d), 16).some(q => q !== o && q.k !== 'tree' && F(q, o.x + ux * (d < 0 ? -o.hw + d : o.hw + d), o.z + uz * (d < 0 ? -o.hw + d : o.hw + d)) < 8))   /* the towns are dense now: the whole line of fire is looked at, 6 m apart */; }).sort((a, b) => a.hp - b.hp)[0];
   const o = site, ux = o.c, uz = -o.s, face = Math.atan2(uz, -ux), at = d => ({ x: o.x + ux * d, z: o.z + uz * d });
   await run(1);
   const A = at(o.hw + 110), Bk = at(-o.hw - 8), far = at(o.hw + 400);

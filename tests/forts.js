@@ -185,16 +185,17 @@ for (const era of ['ww2', 'modern']) {
   const park = () => { const P = S.my; P.inv = 9; P.dead = false; P.y = 3000; P.v.y = 0; P.hp = P.def.hp; S.lives = 9; S.base[0].hp = 300; S.waveTimer = 99; };
   for (const p of S.planes) if (p !== S.my) p.gone = true; for (const u of S.units) if (!u.fixed) { u.cargo = null; u.dead = u.gone = true; }
   const garr = S.squads.find(q => q.job === 'garr' && q.team === 0);
+  C.director = () => {};   // nothing new comes up the road: a battery that arrives shells a post out of its trench, which is not what this measures
   C.run(40, park);
   const lines = S.squads.filter(q => (q.job === 'line' || q.job === 'base') && q.ord.k === 'hold' && q.at);
   const inT = lines.map(q => q.men.filter(m => !m.dead && m.dg > 1).length + '/' + q.live), all = lines.reduce((a, q) => a + q.men.filter(m => !m.dead && m.dg > 1).length, 0), tot = lines.reduce((a, q) => a + q.live, 0);
   console.log('   ' + era + ': ' + lines.length + ' line and base squads, men standing in their trench after 40 s: ' + inT.join(' '));
-  ok(lines.length >= 4 && all >= tot * .8 && lines.every(q => q.men.every(m => m.dead || m.st === 0 || !(m.dg > 0))), era + ': the line and base squads stand in the trenches of their posts');
+  ok(lines.length >= 4 && all >= tot * .8 && lines.every(q => q.men.every(m => m.dead || m.st === 0 || !(m.dg > 0) || (m.ai && m.ai.tgt) || m.sup > S.t))   /* down only between bursts at an enemy in sight, or pinned: the towns reach farther now and a line may be in contact by then */, era + ': the line and base squads stand in the trenches of their posts');
   const gp = garr.ord, e = S.base[1], d = hd(gp, e), fx0 = (e.x - gp.x) / d, fz0 = (e.z - gp.z) / d, foes = [];
   for (let i = 0; i < 4; i++) { const m = C.addMan($('INF')[era][1][0], 1, gp.x + fx0 * 190 + fz0 * i * 5, gp.z + fz0 * 190 - fx0 * i * 5, 0); m.inv = 1e9; foes.push(m); }
-  let most = 0; C.run(45, () => { park(); most = Math.max(most, garr.men.filter(m => !m.dead && m.fc).length); });
-  console.log('   ' + era + ': with enemy soldiers 190 m in front of the garrison, up to ' + most + ' of its ' + garr.live + ' men are at a trench or a wall');
-  ok(most >= 2, era + ': under fire the garrison goes to the works near its post');
+  let most = 0, indoors = 0; C.run(45, () => { park(); most = Math.max(most, garr.men.filter(m => !m.dead && m.fc).length); indoors = Math.max(indoors, garr.men.filter(m => !m.dead && m.cbo && m.cbin).length); });
+  console.log('   ' + era + ': with enemy soldiers 190 m in front of the garrison, up to ' + most + ' of its ' + garr.live + ' men are at a trench or a wall, up to ' + indoors + ' inside a building');
+  ok(most >= 2 || indoors >= 2, era + ': under fire the garrison is in the works near its post or behind the windows of its buildings');
 }
 
 console.log('-- the planner digs in --');

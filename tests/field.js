@@ -23,14 +23,14 @@ console.log('-- orders --');
 { const C = H.load({ seed: 5 }), $ = C.$, S = solo(C, 'ww2'), q = t => S.squads.find(q => q.team === 0 && q.job === t), g = q('garr'), pat = q('road'), fd = $('footD'), O = pat.ord;
   $('FREE').road = 0; $('CMD').doc.balanced.bait = 0;   // the commander leaves the patrol to its beat
   let lo = 1e9, hi = -1e9, walls = 0, low = false;
-  C.run(170, () => { park(S); for (const m of pat.men) m.inv = 9; lo = Math.min(lo, pat.s); hi = Math.max(hi, pat.s); if (Math.abs(S.t - 28) < .01) { walls = g.men.filter(m => !m.dead && $('near')(m.x, m.z, 6).some(o => o.K.sight && fd(o, m.x, m.z) < 3.5)).length; low = g.men.every(m => m.dead || m.st > 0 || $('hdist')(m, g.ord) > 60); } });
-  ok(g.at && walls >= g.live - 1 && low, 'hold: the garrison is at its post, ' + walls + ' of ' + g.live + ' men at the corner of a house, crouched or prone');
+  C.run(170, () => { park(S); for (const m of pat.men) m.inv = 9; lo = Math.min(lo, pat.s); hi = Math.max(hi, pat.s); if (Math.abs(S.t - 60) < .01) { walls = g.men.filter(m => !m.dead && $('near')(m.x, m.z, 6).some(o => o.K.sight && fd(o, m.x, m.z) < 3.5)).length; low = g.men.every(m => m.dead || m.st > 0 || $('hdist')(m, g.ord) > 60); } });
+  ok(g.at && walls >= g.live - 1 && low, 'hold: the garrison is at its post, ' + walls + ' of ' + g.live + ' men at the walls of a house or behind its windows, crouched or prone');
   ok(O.k === 'patrol' && hi - lo > 300 && lo >= Math.min(O.a, O.e) - 15 && hi <= Math.max(O.a, O.e) + 15, 'patrol: the road squad walked ' + Math.round(hi - lo) + ' m of its ' + Math.round(Math.abs(O.a - O.e)) + ' m stretch and stayed on it');
   const w = q('wood'); ok(!w || w.men.every(m => m.dead || $('kindAt')(m.x, m.z) === 1 || $('hdist')(m, w.ord) < 60), 'hold: the picket is in its wood' + (w ? ' (' + Math.round($('hdist')(w.men[0], w.ord)) + ' m from its middle)' : ' (no wood near this line)'));
 }
 for (const era of ['ww2', 'modern']) { const C = H.load({ seed: 6 }), $ = C.$, S = solo(C, era), obj = $('cmdObj')($('cmdOf')(0)), o = obj.x === undefined ? $('routeAt')(S.T.routes[obj.ri], obj.s) : obj, D = $('CMD'); let near = 1e9, st = [], tG = -1;
   C.run(Math.max(SECS, 700), () => { park(S); const op = S.cmd && S.cmd[0].ops.find(o => o.k === 'atk'); if (!op) return; if (st[st.length - 1] !== op.st) st.push(op.st); if (op.st === 'go' && tG < 0) tG = S.t; if (op.st !== 'form') for (const q of op.sq) { const L = q.men.find(m => !m.dead); if (L) near = Math.min(near, Math.hypot(L.x - o.x, L.z - o.z)); } return near > 150; });
-  ok(st.includes('go') ? near < D.fup - 300 : st.includes('form'), era + ' assault: the commander ' + (st.includes('go') ? 'went' : 'is forming up') + ' for the enemy ' + (obj.tw ? 'town' : 'line') + ' (' + st.join(', ') + '), off at ' + tG.toFixed(0) + ' s, nearest ' + Math.round(near) + ' m from it'); }
+  ok(st.includes('go') ? near < D.fup - 300 || st.includes('fight') : st.includes('form'), era + ' assault: the commander ' + (st.includes('go') ? 'went' : 'is forming up') + ' for the enemy ' + (obj.tw ? 'town' : 'line') + ' (' + st.join(', ') + '), off at ' + tG.toFixed(0) + ' s, nearest ' + Math.round(near) + ' m from it'); }
 { const C = H.load({ seed: 7 }), $ = C.$, S = C.sandbox('ww2'), r = S.T.routes[0], s0 = r.len / 2;
   S.over = false; S.demo = true; C.demoKeepAlive = () => {};
   C.spawnColumn(1, 2, 0, 1, 0, s0, 0, 1); const tr = S.units.find(u => u.kind === 'truck'), tk = S.units.filter(u => u.kind === 'tank'); C.unload(tr); const q = tr.sq; let ah = -1e9;
@@ -60,9 +60,19 @@ for (const bases of [false, true]) { const C = H.load({ seed: 9 }), $ = C.$; if 
   if (bases) ok(took && !tr && S.sup.some(b => b.team === 0 && b.prog >= 1), 'with the forward supply base standing, the new squad entered at it on foot ' + tU.toFixed(0) + ' s after the loss and held the post at ' + (S.t - t0).toFixed(0) + ' s');
   else ok(took && tT >= 0 && tT <= F.reinf + F.every + 1 && tG > 0, 'with no supply base, a truck left the main base ' + tT.toFixed(0) + ' s after the loss, ' + Math.round(far) + ' m from the post, let the squad off at ' + tU.toFixed(0) + ' s, was back and gone at ' + tG.toFixed(0) + ' s, and the squad held the post'); }
 
-console.log('-- the wave rule: field squads are not the wave --');
-{ const C = H.load({ seed: 10 }), $ = C.$, S = solo(C, 'ww2'); C.run(3, () => park(S));
-  calm(S); S.waveTimer = 1.5;
-  const left = S.men.filter(m => m.team === 1 && !m.dead).length; C.run(8, () => park(S));
-  ok(S.wave === 2 && left > 20, 'with the first wave\'s aircraft and column gone and ' + left + ' enemy field soldiers alive, wave 2 came'); }
+console.log('-- conquest: the director reinforces, losses cost tickets, the points and the end --');
+{ const C = H.load({ seed: 10 }), $ = C.$, S = solo(C, 'ww2'), Q = S.cq, K = $('CQ'); C.run(3, () => park(S));
+  const col = () => S.units.filter(u => u.team === 1 && !u.fixed && !u.fld && !u.dead).length, n0 = col(), t0 = Q.tk[1];
+  for (const u of S.units) if (u.team === 1 && !u.fixed && !u.fld && !u.dead) { u.cargo = null; C.killUnit(u); } C.step(1 / 60); const left = S.men.filter(m => m.team === 1 && !m.dead).length, paid = t0 - Q.tk[1]; C.run($('DIR').col + 5, () => park(S));
+  ok(n0 > 0 && paid > 0 && left > 20, 'the enemy column of ' + n0 + ' destroyed cost its side ' + Math.round(paid) + ' tickets, and ' + left + ' field soldiers stay');
+  ok(col() >= 2 && !S.units.some(u => u.team === 1 && u.kind === 'tank' && !u.dead), 'the director sent the next column within ' + ($('DIR').col + 5) + ' s (' + col() + ' vehicles), without the tanks, whose replacement waits ' + K.ai.tank + ' s');
+  const P = Q.p, n = P.find(p => p.hold < 0), b = P.find(p => p.base === 1), far = P.find(p => p.hold === 1 && p.base < 0 && !p.links.some(i => P[i].hold === 0));
+  ok(P.length === 7 && P.filter(p => p.hold === 0).length === 3 && P.filter(p => p.hold === 1).length === 3 && !!n && $('towns')().length === 2, 'seven points in 1944: three a side and ' + n.L + ' ' + n.name + ' neutral; ' + P.map(p => p.L + ' ' + p.name).join(', '));
+  S.units = []; S.men = []; S.squads = []; C.director = () => {}; C.plan = () => {};
+  const man = (t, p, dx) => C.addMan($('INF').ww2[S.fac[t]][0], t, p.x + dx, p.z, 0); let m = man(0, n, 5); n.c = 0; C.run(K.t + 2, () => park(S));
+  ok(n.hold === 0, 'one soldier alone in the neutral point takes it in ' + K.t + ' s');
+  const e = man(1, n, -5); C.run(20, () => park(S)); ok(n.hold === 0 && n.c === -1 && n.w[0] === 1 && n.w[1] === 1, 'with one of each side in it nothing moves');
+  m.gone = true; const tk = Q.tk[0]; C.run(K.t + 2, () => park(S)); ok(n.hold === -1 && Q.tk[0] <= tk - K.lost, 'the enemy alone takes it back to neutral, and the loss costs ' + K.lost + ' tickets');
+  e.gone = true; m = man(0, far, 5); C.run(30, () => park(S)); ok(far.c === 1 && far.hold === 1, 'a point with no link to one of its own cannot be taken (' + far.L + ')');
+  m.gone = true; Q.T = 1; C.run(2, () => park(S)); ok(S.over && Q.res && Q.res[1] === 2, 'the clock ends the match: ' + S.why + ', ' + K.why[Q.res[1]]); }
 H.done();

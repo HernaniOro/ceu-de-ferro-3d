@@ -2,11 +2,14 @@
 /* plane loadouts: the tables and their copy in the server, what a loadout does to the plane, each store on its targets, the keys, the rearm, the AI */
 const fs = require('fs'), path = require('path'), vm = require('vm'), H = require('./harness'), { ok, done } = H;
 const SERVER = process.env.SERVER ? path.resolve(process.env.SERVER) : path.join(H.ROOT, 'server.js');
-const c = H.load({ seed: +process.env.SEED || 11 }), $ = c.$, LO = $('LO'), RACKS = $('RACKS'), STORES = $('STORES'), PLANES = $('PLANES'), dt = 1 / 60;
+const c = H.load({ seed: +process.env.SEED || 11 }), $ = c.$, LO = $('LO'), ALLR = $('RACKS'), STORES = $('STORES'), PLANES = $('PLANES'), dt = 1 / 60;
+/* the planes' racks; the helicopters' own, in the same table, are tests/arms.js's */
+const RACKS = {}; for (const id in ALLR) if (PLANES[id]) RACKS[id] = ALLR[id];
 const era = id => PLANES[id].era;
 /* a plane of mine in an empty world, level at h m above the ground, flying +x */
 function fly(id, lo, x, z, agl, V) {
   const S = c.sandbox(era(id)); S.over = false; S.demo = false; S.me = PLANES[id].side; S.fac = [0, 1];
+  c.director = () => {}; c.plan = () => {};   // an empty world stays empty: nobody else's shells and bombs in the counts
   LO.mem = {}; if (lo) LO.mem[id] = lo;
   const p = c.addPlane(id, PLANES[id].side, x, c.hgt(x, z) + agl, z, 0, false);
   p.me = 1; S.my = p; S.cls = 'plane'; S.model = id; p.inv = 0;
@@ -24,7 +27,7 @@ console.log('-- tables --');
   else {
     const sb = {}; vm.runInNewContext(src.slice(src.indexOf('const LOADS = '), src.indexOf('const NST')) + ';this.LOADS = LOADS; this.STW = STW;', sb);
     const mine = {}, stw = {};
-    for (const id in RACKS) mine[id] = [RACKS[id].max].concat(RACKS[id].g.map(g => g[1]));
+    for (const id in ALLR) mine[id] = [ALLR[id].max].concat(ALLR[id].g.map(g => g[1]));
     for (const k in STORES) stw[k] = STORES[k].st ? [STORES[k].w, STORES[k].st] : STORES[k].w;
     ok(JSON.stringify(mine) === JSON.stringify(sb.LOADS), 'server.js LOADS is the page\'s RACKS, group by group');
     ok(JSON.stringify(stw) === JSON.stringify(sb.STW), 'server.js STW is the page\'s STORES, in the same order (' + Object.keys(stw).length + ' stores)');

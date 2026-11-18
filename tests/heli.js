@@ -3,6 +3,7 @@
 const H = require('./harness'), { ok, done } = H, C = H.load({ seed: 11 }), $ = C.$;
 const HELIS = $('HELIS'), HFM = $('HFM'), ids = Object.keys(HELIS), kmh = v => (v * 3.6).toFixed(0), f1 = v => v.toFixed(1), f2 = v => v.toFixed(2);
 let S;
+const K = $('ASPD');   // the world is K times what the dials say: heights flown by hand and times spent climbing follow it
 const pitch = p => Math.asin(Math.max(-1, Math.min(1, p.f.y))), bank = p => Math.atan2(-p.r.y, p.u.y), hdg = p => Math.atan2(-p.f.z, p.f.x), vh = p => Math.hypot(p.v.x, p.v.z);
 const agl = p => p.y - C.hgt(p.x, p.z) - p.def.gh;
 /* a flat open place: the middle of the friendly airfield's apron side, far from buildings */
@@ -24,7 +25,7 @@ console.log('climb, descent and speeds (stick held to the stop, collective keys 
 const top = {};
 for (const id of ids) {
   const d = HELIS[id], r = {};
-  let p = mk(id, 300); hands(p, { vs: HFM.vs[0] }); C.run(15); r.up = p.v.y; hands(p, { vs: 99 }); C.run(15); r.max = p.v.y;
+  let p = mk(id, 300); hands(p, { vs: HFM.vs[0] }); C.run(15 / K); r.up = p.v.y; hands(p, { vs: 99 }); C.run(15 / K); r.max = p.v.y;
   p = mk(id, 600); hands(p, { vs: -HFM.vs[1] }); C.run(15); r.dn = -p.v.y;
   p = mk(id, 300); hands(p, { pitch: -1 }); C.run(90); r.fw = vh(p); r.dz = p.v.y; r.th = pitch(p);
   p = mk(id, 300); hands(p, { roll: 1 }); C.run(40); r.sd = vh(p); r.sdy = wrapd(hdg(p) - 0);
@@ -79,11 +80,12 @@ console.log('rotor and body against the world');
 console.log('engines out at 300 m and 110 km/h');
 function auto(id, well) {
   const p = mk(id, 300); hands(p, { pitch: -1 }); C.run(40, () => { if (vh(p) > 30) return false; });
-  for (const i of [3, 4]) p.parts[i].hp = 0; C.refit(p);
-  let tv = 0, tvh = 0, rmin = 9, rmax = 0, sink = 0, t0 = S.t;
+  for (const n of ['engL', 'engR']) p.parts[p.def.parts.ix[n]].hp = 0; C.refit(p);
+  let tv = 0, tvh = 0, rmin = 9, rmax = 0, sink = 0, t0 = S.t; const x0 = p.x, z0 = p.z;
   C.run(120, () => {
+    if (agl(p) > 60 * K) { const h = agl(p); p.x = x0; p.z = z0; p.y = C.hgt(x0, z0) + p.def.gh + h; }   // the glide stays over the open apron: what stands kilometres on is not what this measures
     const a = agl(p), c = p.ctl; c.vs = null; c.free = false; c.yaw = 0; c.roll = 0;
-    if (well) { const lever = a > 5.5 ? .35 : 1; c.raw = Math.sign(lever - c.col) * (Math.abs(lever - c.col) > .02 ? 1 : 0); c.pitch = a > 25 ? (vh(p) > 28 ? .02 : -.1) : vh(p) > 5 ? .22 : 0; } else { c.raw = 0; c.pitch = 0; c.free = true; }
+    if (well) { const lever = a > 5.5 * K ? .35 : 1; c.raw = Math.sign(lever - c.col) * (Math.abs(lever - c.col) > .02 ? 1 : 0); c.pitch = a > 25 * K ? (vh(p) > 28 ? .02 : -.1) : vh(p) > 5 ? .22 : 0; } else { c.raw = 0; c.pitch = 0; c.free = true; }
     if (a > 30) { sink = -p.v.y; rmin = Math.min(rmin, p.rpm); rmax = Math.max(rmax, p.rpm); }
     if (!p.land && !p.dead) { tv = -p.v.y; tvh = vh(p); } else return false;
   });
@@ -91,7 +93,7 @@ function auto(id, well) {
 }
 for (const id of ids) {
   const a = auto(id, true), b = auto(id, false);
-  console.log('  ' + id + ': handled (lever to 0.35, 100 km/h, nose up from 25 m until slow, lever up at 5.5 m): sink ' + f1(a.sink) + ' m/s, rotor ' + Math.round(a.rmin * 100) + ' to ' + Math.round(a.rmax * 100) + '%, touches at ' + f1(a.tv) + ' m/s down and ' + f1(a.tvh) + ' ahead after ' + f1(a.t) + ' s: ' + (a.p.dead ? 'DESTROYED' : 'structure ' + Math.round(a.p.hp / a.p.def.hp * 100) + '%') + '. Hands off: ' + f1(b.tv) + ' m/s down: ' + (b.p.dead ? 'destroyed' : 'structure ' + Math.round(b.p.hp / b.p.def.hp * 100) + '%'));
+  console.log('  ' + id + ': handled (lever to 0.35, 100 km/h, nose up from ' + f1(25 * K) + ' m until slow, lever up at ' + f1(5.5 * K) + ' m): sink ' + f1(a.sink) + ' m/s, rotor ' + Math.round(a.rmin * 100) + ' to ' + Math.round(a.rmax * 100) + '%, touches at ' + f1(a.tv) + ' m/s down and ' + f1(a.tvh) + ' ahead after ' + f1(a.t) + ' s: ' + (a.p.dead ? 'DESTROYED' : 'structure ' + Math.round(a.p.hp / a.p.def.hp * 100) + '%') + '. Hands off: ' + f1(b.tv) + ' m/s down: ' + (b.p.dead ? 'destroyed' : 'structure ' + Math.round(b.p.hp / b.p.def.hp * 100) + '%'));
   ok(!a.p.dead && a.p.hp > a.p.def.hp * .75, id + ' survives an autorotation flown well, nearly whole'); ok(b.p.dead || b.p.hp < a.p.hp, id + ' hands off fares worse');
 }
 console.log('what each part\'s loss does (ah64)');
@@ -104,7 +106,7 @@ console.log('what each part\'s loss does (ah64)');
   console.log('  tail rotor: at the hover it turns ' + f1(spinH * 57.3) + '°/s, at 200 km/h ' + f1(spinF * 57.3) + '°/s'); ok(spinH > .8 && spinF < .25, 'no tail rotor: it spins at the hover and flies on at speed');
   p = mk('ah64', 100); kill(p, 'engL'); hands(p, { vs: 99 }); C.run(12); const one = p.v.y; console.log('  one engine: best climb ' + f1(one) + ' m/s (two: ' + f1(top.ah64.max) + '), crippled ' + p.mod.crip); ok(one > 0 && one < top.ah64.max * .7 && p.mod.crip, 'one engine: it still climbs, slowly');
   p = mk('ah64', 100); kill(p, 'trans'); C.run(3); console.log('  transmission: rotor at ' + Math.round(p.rpm * 100) + '% after 3 s hands off, sinking ' + f1(-p.v.y) + ' m/s'); ok(p.rpm < .95 && p.v.y < -2, 'no transmission: the rotor is not driven');
-  p = mk('ah64', 100); kill(p, 'fuel'); hands(p, { vs: 99 }); C.run(12); console.log('  fuel: thrust ' + f2(p.mod.thrust) + ', best climb ' + f1(p.v.y) + ' m/s, leaking ' + !!p.mod.leak); ok(p.mod.leak && p.v.y < top.ah64.max * .9, 'fuel: leak and less power');
+  p = mk('ah64', 100); kill(p, 'fuel'); kill(p, 'fuelA'); hands(p, { vs: 99 }); C.run(12); console.log('  fuel: thrust ' + f2(p.mod.thrust) + ', best climb ' + f1(p.v.y) + ' m/s, leaking ' + !!p.mod.leak); ok(p.mod.leak && p.v.y < top.ah64.max * .9, 'fuel: leak and less power');
   p = mk('ah64', 100); C.impact(p, 1, 9999, by, p.x + p.def.parts[ix('pilot')].box[0] * p.f.x, p.y + p.def.parts[ix('pilot')].box[1], p.z + p.def.parts[ix('pilot')].box[0] * p.f.z, 0, -1, 0); console.log('  pilot: ' + (p.dead ? 'lost' : 'alive, part ' + p.parts[ix('pilot')].hp)); ok(p.dead, 'pilot: the helicopter is lost');
   p = mk('ah64', 100); kill(p, 'gunner'); p.ctl.aim = { x: -p.r.x, y: 0, z: -p.r.z }; C.run(1); const slow = Math.abs(p.ty); p = mk('ah64', 100); p.ctl.aim = { x: -p.r.x, y: 0, z: -p.r.z }; C.run(1); console.log('  gunner: turret turned ' + f2(slow) + ' rad in 1 s, with him ' + f2(Math.abs(p.ty))); ok(slow < Math.abs(p.ty) * .4, 'gunner: the turret is slow and the gun spreads');
   p = mk('ah64', 100); C.impact(p, 0, 40, by, p.x, p.y, p.z, 1, 0, 0); ok(p.hp < p.def.hp && !p.dead, 'airframe: a hit takes structure (' + Math.round(p.hp) + ' of ' + p.def.hp + ')');

@@ -66,7 +66,7 @@ for (const era of ['ww2', 'modern']) {
   ok(down.every(o => !C.ray(o.x - 5, o.y + 2, o.z, o.x + 5, o.y + 2, o.z, 0) || $('RAY').o !== o), era + ': a round passes where a felled tree stood');
   S.units = []; fresh2();
   let held = 0; const tries = 6;
-  for (let i = 0; i < tries; i++) { S.units = []; const t = C.addVehicle('truck', null, 0, w.x - 140, w.z - 50 + i * 20, 0); t.ctl.drive = 1; run(30, () => t.x < w.x + 120); if (t.x < w.x + 120) held++; }
+  for (let i = 0; i < tries; i++) { S.units = []; const t = C.addVehicle('truck', null, 0, w.x - 140, w.z - 50 + i * 20, 0); t.ctl.drive = 1; run(30 / $('GSPD'), () => t.x < w.x + 120);   /* the time an unhindered truck takes plus a quarter, at the scale the ground moves at */ if (t.x < w.x + 120) held++; }
   S.units = []; const m = C.addMan($('INF')[era][0][0], 0, w.x - 140, w.z + 3, 0), A = $('manBrain')(0);
   run(150, () => { const W = C.wayTo(A, m.x, m.z, w.x + 140, w.z + 3, 1, false), dx = W.x - m.x, dz = W.z - m.z, d = Math.hypot(dx, dz) || 1; m.ctl.mx = dx / d; m.ctl.mz = dz / d; if (C.jammed(A, m, true)) { const k = m.ctl.mx; m.ctl.mx = -m.ctl.mz * A.fs; m.ctl.mz = k * A.fs; } return m.x < w.x + 138; });
   console.log('   ' + era + ': a truck driven straight in from ' + tries + ' places is stopped by a trunk ' + held + ' times; a soldier walks 280 m through in ' + (m.x >= w.x + 138 ? 'time' : 'part: ' + (m.x - w.x + 140).toFixed(0) + ' m'));

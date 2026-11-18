@@ -5,7 +5,11 @@ const H = require('./harness'), C = H.load({ seed: 31 }), $ = C.$, ok = H.ok, DR
 const OBJ = $('OBJ'), OBJD = $('OBJD'), OBJS = $('OBJS'), MAN = $('MAN'), STANCE = $('STANCE'), ARMS = $('ARMS'), PLANES = $('PLANES'), SARMS = $('SARMS'), HK = $('HK'), TANKS = $('TANKS');
 const DT = .017;
 let S, T;
-const fresh = era => { S = C.sandbox(era || 'ww2'); T = S.T; return S; };
+/* The buildings of the towns are structures now (tests/city.js). Here each stands in for the plain box a world object is, the kind 'house',
+   so that this suite goes on testing what every such object does: the airfield's buildings, the trees, the wrecks. box(false) gives them back
+   (CITY=1: the long drives run among the real ones, soldiers free to walk in) */
+const box = on => { for (const era in $('TERRAIN')) for (const o of $('TERRAIN')[era].houses) { if (on && o.B) { o.B1 = o.B; o.B = null; o.k = 'house'; o.K = OBJ.house; o.tower = o.B1.t === 'tower' ? 1 : 0; o.hp = Math.fround(OBJ.house.hp[0] + OBJ.house.hp[1] * o.hw * o.hd * 4 * o.h); } else if (!on && o.B1) { o.B = o.B1; o.B1 = null; o.k = 'bld'; o.K = OBJ.bld; o.hp = OBJ.bld.hp[0]; } } };
+const fresh = (era, real) => { box(false); S = C.sandbox(era || 'ww2'); T = S.T; if (!real) { box(true); for (const o of T.houses) S.oh[o.id] = o.hp; } return S; };
 const run = (secs, each, dt) => C.run(secs, each, dt || DT);
 const hp = o => S.oh[o.id], st = o => S.os[o.id];
 /* a house on level ground with nothing else on the line through it along its own x axis: the shooter's side is +x */
@@ -26,7 +30,7 @@ const reset = o => { S.os[o.id] = 0; S.oh[o.id] = o.hp; S.holes = []; };
 
 console.log('-- generation: ids, counts, roads --');
 for (const era of ['ww2', 'modern']) {
-  fresh(era);
+  fresh(era, true);
   const n = {}; for (const o of T.objs) n[o.k] = (n[o.k] || 0) + 1;
   let wall = 1e9, tree = 1e9;
   for (const o of T.objs) for (const r of T.routes) for (let s = 0; s <= r.len; s += 3) { const p = C.routeAt(r, s), d = C.footD(o, p.x, p.z); if (o.k === 'tree') tree = Math.min(tree, d); else wall = Math.min(wall, d); }
@@ -56,8 +60,8 @@ fresh('ww2');
     'hand grenade': () => { const p = s.at(o.hw + 12); C.lobbed(sol, 'nade', MAN.nade, p.x, o.y + 2, p.z, dir.x * 14, 5, dir.z * 14); },
     'aircraft rocket': () => { const v = aim(2.6, 600); S.bombs.push({ k: 'rocket', x: A.x, y: ya, z: A.z, vx: v.x, vy: v.y + .2, vz: v.z, o: PLANES.p47.ord[1], team: 0, by: shooter, life: 4 }); },
     'bomb': () => { const p = s.at(o.hw - 1); S.bombs.push({ k: 'bomb', x: p.x + s.ux * 30, y: o.y + 60, z: p.z + s.uz * 30, vx: dir.x * 30, vy: -55, vz: dir.z * 30, o: PLANES.bf109.ord[0], team: 0, by: shooter, life: 60 }); },
-    'guided missile (AGM)': () => { S.missiles.push({ x: A.x, y: ya + 3, z: A.z, gnd: true, d: C.vnorm({ x: dir.x, y: -.02, z: dir.z }), v: 300, vmax: 330, turn: 1.5, life: 30, target: truck, o: PLANES.a10.ord[0], team: 0, by: shooter }); },
-    'air-to-air missile': () => { S.missiles.push({ x: A.x, y: ya, z: A.z, d: C.vnorm(aim(3, 1)), v: 800, vmax: 900, turn: 1.5, life: 9, target: null, o: PLANES.f22.ord[1], team: 0, by: shooter }); },
+    'guided missile (AGM)': () => { S.missiles.push($('MSL').arm({ x: A.x, y: ya + 3, z: A.z, gnd: true, target: truck, o: PLANES.a10.ord[0], team: 0, by: shooter }, C.vnorm({ x: dir.x, y: -.02, z: dir.z }), shooter)); },
+    'air-to-air missile': () => { S.missiles.push($('MSL').arm({ x: A.x, y: ya, z: A.z, target: null, o: PLANES.f22.ord[1], team: 0, by: shooter }, C.vnorm(aim(3, 1)), shooter)); },
     'flak burst': () => { shooter.ctl.fuse = 200; $('ARMK').flak.fire(shooter, Object.assign({}, ARMS.flak), { x: A.x, y: ya, z: A.z }, C.vnorm(aim(3, 1))); }
   };
   for (const k in KINDS) {
@@ -65,7 +69,7 @@ fresh('ww2');
     const h0 = hp(o), t0 = truck.hp, v0 = vic.hp; let beyond = false;
     KINDS[k]();
     run(6, () => { for (const b of [...S.bullets, ...S.bombs, ...S.missiles]) if (!b.gone && (b.x - o.x) * s.ux + (b.z - o.z) * s.uz < -o.hw - .5 && C.footD(o, b.x, b.z) > .5 && b.y < o.y + o.h) beyond = true; return S.bullets.length + S.bombs.length + S.missiles.length + S.shells.length > 0; });
-    const dh = h0 - hp(o), blast = /bomb|missile \(AGM|howitzer/.test(k), hurt = (t0 - truck.hp) + (v0 - vic.hp) + (truck.dead || vic.dead ? 99 : 0);
+    const dh = h0 - hp(o), blast = /bomb|missile \(AGM|howitzer|aircraft rocket/.test(k), hurt = (t0 - truck.hp) + (v0 - vic.hp) + (truck.dead || vic.dead ? 99 : 0);
     console.log('   ' + k.padEnd(36) + 'house -' + dh.toFixed(2).padStart(7) + ' of ' + o.hp.toFixed(0) + (st(o) === 2 ? ' (down)' : '') + ', behind it: truck -' + (t0 - truck.hp).toFixed(1) + ', soldier -' + (v0 - vic.hp).toFixed(1));
     ok(dh > 0 && !beyond, k + ': stops at the wall and damages the house');
     if (!blast) ok(hurt === 0, k + ': nothing behind the house is hurt');
@@ -92,7 +96,7 @@ for (const era of ['ww2', 'modern']) {
       if (C.hgt(sx, sz) > y0 - 1) continue;
       reset(o); S.bullets = []; S.bombs = []; S.missiles = []; S.t = 0;
       for (const q of T.houses) S.oh[q.id] = 1e6;
-      const b = mk === 0 ? { x: sx, y: y0, z: sz, vx: d.x * spd, vy: d.y * spd, vz: d.z * spd, life: 3, team: 0, dmg: 6, ap: .3, by: sh } : mk === 1 ? { k: 'shell', x: sx, y: y0, z: sz, vx: d.x * spd, vy: d.y * spd, vz: d.z * spd, o: ARMS.ap, team: 0, by: sh, life: 8 } : mk === 2 ? { k: 'rocket', x: sx, y: y0, z: sz, vx: d.x * spd, vy: d.y * spd, vz: d.z * spd, o: PLANES.p47.ord[1], team: 0, by: sh, life: 4 } : { x: sx, y: y0, z: sz, d, v: spd, vmax: spd, turn: 1.5, life: 9, target: null, o: PLANES.f22.ord[1], team: 0, by: sh };
+      const b = mk === 0 ? { x: sx, y: y0, z: sz, vx: d.x * spd, vy: d.y * spd, vz: d.z * spd, life: 3, team: 0, dmg: 6, ap: .3, by: sh } : mk === 1 ? { k: 'shell', x: sx, y: y0, z: sz, vx: d.x * spd, vy: d.y * spd, vz: d.z * spd, o: ARMS.ap, team: 0, by: sh, life: 8 } : mk === 2 ? { k: 'rocket', x: sx, y: y0, z: sz, vx: d.x * spd, vy: d.y * spd, vz: d.z * spd, o: PLANES.p47.ord[1], team: 0, by: sh, life: 4 } : $('MSL').arm({ x: sx, y: y0, z: sz, target: null, o: PLANES.f22.ord[1], team: 0, by: sh }, d, sh);
       (mk === 0 ? S.bullets : mk === 3 ? S.missiles : S.bombs).push(b);
       /* does the straight line really cross this house, well inside it? then the round must end on a wall before the far side */
       const far = { x: sx + d.x * (L + 60), y: y0 + d.y * (L + 60), z: sz + d.z * (L + 60) };
@@ -161,10 +165,11 @@ fresh('ww2');
   let best = null; for (const o of T.houses) { const n = T.houses.filter(q => q !== o && Math.hypot(q.x - o.x, q.z - o.z) < 70).length; if (!best || n > best.n) best = { o, n }; }
   const o = best.o, bomb = PLANES.stuka.ord[0];
   S.bombs.push({ k: 'bomb', x: o.x, y: o.y + 40, z: o.z, vx: 0, vy: -60, vz: 0, o: bomb, team: 0, by: null, life: 9 }); run(2);
-  const rows = T.houses.map(q => ({ q, d: q === o ? 0 : C.footD(q, o.x, o.z) })).filter(r => r.d < bomb.r + 15).sort((a, b) => a.d - b.d);
+  const rows = T.houses.map(q => ({ q, f: C.footD(q, o.x, o.z), d: q === o ? 0 : Math.hypot(C.footD(q, o.x, o.z), Math.max(0, o.y + o.h - q.y - q.h, q.y - o.y - o.h)) }))   // by the distance the burst on the roof has to their walls, their height counted
+   .filter(r => r.d < bomb.r + 15).sort((a, b) => a.d - b.d);
   console.log('   ' + bomb.name + ' (' + bomb.dmg + ' over ' + bomb.r + ' m) on a roof: ' + rows.map(r => r.d.toFixed(0) + ' m -' + (r.q.hp - hp(r.q)).toFixed(0) + ['', '*', '**'][st(r.q)]).join(', ') + '   (* damaged, ** down)');
   const loss = rows.map(r => r.q.hp - hp(r.q));
-  ok(st(o) === 2 && loss.filter(v => v > 0).length > 1 && rows.every((r, i) => !i || r.d > bomb.r + 1 ? true : loss[i] <= loss[i - 1] + 1e-6) && rows.filter(r => r.d > bomb.r + 1).every(r => r.q.hp === hp(r.q)), 'the house struck falls, its neighbours take less the farther they are, and none beyond the radius');
+  ok(st(o) === 2 && loss.filter(v => v > 0).length > 1 && rows.every((r, i) => !i || r.d > bomb.r + 1 ? true : loss[i] <= loss[i - 1] + 4)   /* the burst is a little under the roof line the rows are measured from */ && rows.filter(r => r.f > bomb.r + 1).every(r => r.q.hp === hp(r.q)), 'the house struck falls, its neighbours take less the farther they are, and none beyond the radius');
 }
 
 console.log('-- trees: a tank, a truck, a soldier, a burst --');
@@ -189,7 +194,7 @@ fresh('ww2');
 console.log('-- aircraft into a building or a tree --');
 for (const era of ['ww2', 'modern']) {
   fresh(era);
-  const o = era === 'ww2' ? T.byId[90] : T.houses.slice().sort((a, b) => b.h - a.h)[0], id = era === 'ww2' ? 'bf109' : 'f22', h0 = hp(o);
+  const o = era === 'ww2' ? T.houses.find(o => o.tower) : T.houses.slice().sort((a, b) => b.h - a.h)[0], id = era === 'ww2' ? 'bf109' : 'f22', h0 = hp(o);
   const fly = (x, y, z, h, by) => { const p = C.addPlane(id, 0, x, y, z, h, false); p.ai = false; if (by) { p.lastBy = by; p.hitT = S.t; } return p; };
   let credit = 0; const DN = C.downed; C.downed = (p, by) => { credit++; };
   const p = fly(o.x - 90, o.y + o.h * .6, o.z, 0, null); run(4, () => !p.gone);
@@ -249,7 +254,7 @@ fresh('ww2');
 
 console.log('-- long drives through both towns: vehicles and soldiers with random goals, ' + DRIVE + ' s each --');
 for (const era of ['ww2', 'modern']) for (let ti = 0; ti < 2; ti++) {
-  fresh(era); C.seed(100 + ti);
+  fresh(era, !!process.env.CITY); C.seed(100 + ti);
   const tw = T.towns[ti], rnd = H.rng(50 + ti + era.length), AI = $('AI'), side = S.E.sides[0];
   const goal = r => { for (let i = 0; i < 50; i++) { const g = C.clearOf(tw.x + (rnd() - .5) * 840, tw.z + (rnd() - .5) * 840, r, {}); if (C.hgt(g.x, g.z) > T.WL + 1.5) return g; } return { x: tw.x, z: tw.z }; };
   const movers = [], add = (o, r) => { o.goal = goal(r); o.r = r; o.last = { x: o.x, z: o.z, t: 0 }; movers.push(o); return o; };

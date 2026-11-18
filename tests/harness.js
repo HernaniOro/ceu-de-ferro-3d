@@ -19,6 +19,9 @@ function load(o) {
   const ctx = vm.createContext({ console, setTimeout, clearTimeout, WebSocket: o.WebSocket, location: { protocol: 'http:', host: o.host || 'localhost:0' } });
   vm.runInContext(source(o.page) + '\n;globalThis.$ = s => eval(s);', ctx, { filename: 'sim.js' });
   ctx.seed = n => { ctx.$('Math').random = rng(n); };
+  if (!o.eco) try { ctx.$('ECO').on = 0; } catch (e) {}   // the economy only where a test asks for it: every older test sees today's battle
+  if (!o.ff) try { ctx.$('FF').on = 0; } catch (e) {}   // friendly fire only where a test asks for it or sets FF.on itself
+  try { ctx.$('MAPV = ' + (+process.env.MAPV || o.mapv || 1)); } catch (e) {}   // the old map unless a test asks for the road network (MAPV=2 or load({ mapv: 2 }))
   if (o.seed) ctx.seed(o.seed);
   ctx.run = (secs, each, dt) => { dt = dt || 1 / 60; for (let n = Math.round(secs / dt); n-- > 0;) { ctx.step(dt); if (each && each(dt) === false) break; } };
   /* an empty battlefield of that era: nothing spawns by itself */

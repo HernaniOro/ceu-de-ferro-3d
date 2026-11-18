@@ -11,7 +11,7 @@ function run(id, key, setup, o) {
   c.explode = function (x, y, z, r, dmg) { bursts.push({ x, y, z, r, dmg }); return blast.apply(this, arguments); };
   c.run(40, () => {
     if (o.each) o.each(st, p);
-    c.steer(p, o.dive && !out ? c.vnorm({ x: T.x - p.x, y: T.y - p.y, z: T.z - p.z }) : c.toward(p, T.x, T.z + (o.dz || 0), T.y + agl), 1); p.ctl.thr = .8;
+    c.steer(p, o.dive && !out ? c.vnorm({ x: T.x - p.x, y: T.y - p.y, z: T.z - p.z }) : out && o.level ? c.vnorm({ x: p.f.x, y: 0, z: p.f.z }) : c.toward(p, T.x, T.z + (o.dz || 0), T.y + agl), 1); p.ctl.thr = .8;   // level: it flies on straight after the release, the laser pod under it on the target
     const vh = Math.hypot(p.v.x, p.v.z), h = p.y - 1.5 - T.y, vy = p.v.y - 2, tf = (vy + Math.sqrt(vy * vy + 2 * GR * h)) / GR;
     if (!out && (o.at ? T.x - p.x < o.at : T.x - p.x - vh * tf < (o.dx || 0))) { out = c.release(p, i); if (o.n) for (let n = o.n; --n > 0;) { p.ocool[i] = 0; c.release(p, i); } }
     return !(out && !S().bombs.length && !S().missiles.length);
@@ -37,13 +37,13 @@ for (const [id, key] of [['a10', 'cbu87'], ['su25', 'rbk500'], ['stuka', 'ab250'
 console.log('-- guided bombs --');
 for (const [id, key] of [['a10', 'gbu12'], ['f22', 'gbu32'], ['su25', 'kab500'], ['su57', 'kab500']]) {
   const foe = PLANES[id].side ? 'abrams' : 't72';
-  const far = run(id, key, (T, p) => tank(S(), 'tank', foe, 1 - p.team, T.x, T.z + 220), { dx: 250 });
+  const far = run(id, key, (T, p) => tank(S(), 'tank', foe, 1 - p.team, T.x, T.z + 220), { dx: 250, level: 1 });
   ok(far.out && far.bursts.length === 1 && hd(far.bursts[0], far.st) < 8 && far.st.dead && far.st.lastBy === far.p, id + ' ' + STORES[key].name + ': let go 250 m early and 220 m to the side of a locked tank, it lands ' + hd(far.bursts[0], far.st).toFixed(1) + ' m from it and destroys it');
   const dumb = run(id, id === 'a10' ? 'mk82' : id === 'f22' ? 'mk83' : id === 'su25' ? 'fab500' : 'fab250', (T, p) => tank(S(), 'tank', foe, 1 - p.team, T.x, T.z + 220), { dx: 250 });
   console.log('     a free-fall bomb from the same release lands ' + hd(dumb.bursts[0], dumb.st).toFixed(0) + ' m away');
 }
 {
-  const mv = run('a10', 'gbu12', (T, p) => { const u = tank(S(), 'tank', 't72', 1, T.x, T.z); return u; }, { each: u => { if (!u.dead) { u.x += 9 / 60; u.z += 6 / 60; u.v = { x: 9, y: 0, z: 6 }; u.y = c.hgt(u.x, u.z); } } });
+  const mv = run('a10', 'gbu12', (T, p) => { const u = tank(S(), 'tank', 't72', 1, T.x, T.z); return u; }, { each: u => { if (!u.dead) { u.x += 9 / 60; u.z += 6 / 60; u.v = { x: 9, y: 0, z: 6 }; u.y = c.hgt(u.x, u.z); } }, level: 1 });
   ok(mv.st.dead, 'a tank driving off at 39 km/h is followed and hit (' + hd(mv.bursts[0], mv.st).toFixed(1) + ' m)');
   const pt = run('a10', 'gbu12', (T, p) => men(T, 12, 14, 1), { dive: 1, at: 800, agl: 1500 });
   ok(pt.bursts.length >= 1 && hd(pt.bursts[0], pt.T) < 25 && pt.st.filter(m => m.dead).length >= 8, 'with no vehicle to lock, it goes to the ground under the nose: let go 800 m out in a 30° dive at a squad, it lands ' + hd(pt.bursts[0], pt.T).toFixed(1) + ' m from it (' + pt.st.filter(m => m.dead).length + ' of 12 soldiers)');
@@ -64,10 +64,11 @@ console.log('-- missiles for aircraft --');
     const s = STORES[key], a = shot(id, key, 3000, .3), far = shot(id, key, 6000, .3), wide = shot(id, key, 3000, .65);
     return { key, s, a, far, wide };
   });
-  for (const r of rows) console.log('   ' + r.s.name.padEnd(8) + ' 3 km, 17° off: ' + (r.a.lock && r.a.hit ? 'locks and hits' : 'no') + ' | 6 km: ' + (r.far.lock ? (r.far.hit ? 'locks and hits' : 'locks, misses') : 'no lock') + ' | 3 km, 37° off: ' + (r.wide.lock ? (r.wide.hit ? 'locks and hits' : 'locks, misses') : 'no lock'));
   const med = rows.filter(r => !r.s.sk), ir = rows.filter(r => r.s.sk);
-  ok(rows.every(r => r.a.lock && r.a.tg && r.a.hit), 'every missile locks and hits a plane 3 km ahead');
-  ok(med.every(r => r.far.lock && !r.wide.lock) && ir.every(r => !r.far.lock && r.wide.lock && r.wide.hit), 'the medium-range ones reach 6 km but only near the nose; the short-range ones stop at ' + $('IR').rng / 1000 + ' km and take a target 37° off');
+  for (const r of rows) console.log('   ' + r.s.name.padEnd(8) + ' 3 km, 17° off: ' + (r.a.lock && r.a.hit ? 'locks and hits' : 'no') + ' | 6 km: ' + (r.far.lock ? (r.far.hit ? 'locks and hits' : 'locks, misses') : 'no lock') + ' | 3 km, 37° off: ' + (r.wide.lock ? (r.wide.hit ? 'locks and hits' : 'locks, misses') : 'no lock'));
+  
+  ok(rows.every(r => r.a.lock && r.a.tg) && med.every(r => r.a.hit), 'every missile locks on a plane 3 km ahead, and the radar ones catch it though it runs in afterburner');
+  ok(med.every(r => r.far.lock && !r.wide.lock) && ir.every(r => !r.far.lock && r.wide.lock === ($('MSL').SK[$('MSL').def(r.s).sk].hob > .65)), 'the radar ones lock at 6 km but only near the nose; no heat seeker locks that far, and only those that look far off the nose (R-73, AIM-9X) take a target 37° off');
 }
 
 console.log('-- rockets and extra rounds --');

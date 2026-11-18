@@ -26,7 +26,7 @@ const N = require('./net'), { ok, done } = require('./harness');
   const row = [-5, 2, 1, 22, 1, 100.5, -20.2, 1.57, 9];
   h.send({ t: 'ai', k: 2, e: [row, [-6, 7, 0, 10, 0, 1, 2, 3, 0]] }); const ai = await a.wait('ai'); ok(ai && ai.k === 2 && ai.e.length === 2 && ai.e[0][8] === 9, 'a snapshot of soldiers (k 2) from the host is relayed');
   await N.sleep(60); b.got.forEach(m => { m.seen = 1; });
-  for (const e of [[-5, 12, 1, 22, 1, 1, 2, 3, 0], [-5, 2, 1, 22, 1, 1, 2, 3], [5, 2, 1, 22, 1, 1, 2, 3, 0], [-5, 2, 2, 22, 1, 1, 2, 3, 0], [-5, 2, 1, 22, 1, 1, 2, 3, 256], [-5, 'blueAT', 1, 22, 1, 1, 2, 3, 0]]) h.send({ t: 'ai', k: 2, e: [e] });
+  for (const e of [[-5, 99, 1, 22, 1, 1, 2, 3, 0], [-5, 2, 1, 22, 1, 1, 2, 3], [5, 2, 1, 22, 1, 1, 2, 3, 0], [-5, 2, 2, 22, 1, 1, 2, 3, 0], [-5, 2, 1, 22, 1, 1, 2, 3, 256], [-5, 'blueAT', 1, 22, 1, 1, 2, 3, 0]]) h.send({ t: 'ai', k: 2, e: [e] });
   a.send({ t: 'ai', k: 2, e: [row] });
   ok(await none(b, 'ai'), 'bad soldier rows (kit index, length, id, team, packed field) and a guest\'s snapshot are dropped');
   h.send({ t: 'ai', k: 1, e: [[-7, 'truck', 1, 25, 16, 1, 2, 3, 0, 0, 0, 0, 0, 0]] }); const tr = await a.wait('ai'); ok(tr && tr.k === 1 && tr.e[0][4] === 16, 'a vehicle row with the loaded-truck flag passes');
@@ -36,6 +36,8 @@ const N = require('./net'), { ok, done } = require('./harness');
   ok(ad && ad.model === 'redAT' && sc && sc.players.find(p => p.id === a.id).ai === 1, 'aidown of a soldier is relayed and credited');
   h.send({ t: 'aidown', id: -5, by: a.id, model: 'schutze', det: 0 }); ok(await none(b, 'aidown'), 'aidown with a kit of the other era is dropped');
   a.send({ t: 'ord', i: 0, target: -8, m: a.id * 4096 + 1 }); const od = await h.wait('ord'); ok(od && od.from === a.id && od.m === a.id * 4096 + 1 && od.target === -8, 'a guided launch by a soldier goes as ord, with its missile id');
+  a.send({ t: 'msl', id: a.id * 4096 + 1, k: 1, p: [1, 2, 3] }); const sk1 = await h.wait('msl'); ok(sk1 && sk1.id === a.id * 4096 + 1 && sk1.k === 1 && sk1.p.length === 3, 'what a missile\'s seeker did is relayed for its owner');
+  a.send({ t: 'msl', id: h.id * 4096 + 1, k: 0 }); a.send({ t: 'msl', id: a.id * 4096 + 1, k: 3, p: [1, 2, 3] }); a.send({ t: 'msl', id: a.id * 4096 + 1, k: 9 }); ok(await none(h, 'msl'), 'not for someone else\'s missile, a place without its heading, or an unknown kind');
   a.send({ t: 'hit', to: h.id, dmg: 50, pt: 1, k: 1 }); const ht = await h.wait('hit'); ok(ht && ht.from === a.id && ht.by === null, 'a soldier\'s hit on a player reaches that player only'); ok(await none(b, 'hit'), '  and nobody else');
   h.send({ t: 'hit', to: a.id, dmg: 5, pt: 2, k: 0, by: -5 }); const h2 = await a.wait('hit'); ok(h2 && h2.by === -5 && h2.pt === 2, 'the host\'s AI hit on a soldier carries the zone and the AI id');
   b.send({ t: 'hit', to: a.id, dmg: 5, pt: 2, k: 0, by: -5 }); const h3 = await a.wait('hit'); ok(h3 && h3.by === null, 'a guest cannot speak for an AI entity');
@@ -56,6 +58,17 @@ const N = require('./net'), { ok, done } = require('./harness');
   for (const e of [[12], [12, 3], [12, 0], [-1, 1], [70000, 1], [1.5, 1], ['a', 1], [], new Array(202).fill(1)]) h.send({ t: 'obj', e }); h.send({ t: 'obj', e: 5 }); h.send({ t: 'obj' });
   ok(await none(a, 'obj'), 'malformed obj is dropped: odd length, a stage other than 1 or 2, an id out of range, too long, not a list');
   h.send({ t: 'obj', e: new Array(200).fill(1) }); ok(!!(await a.wait('obj')), 'a list of 100 pairs passes');
+  /* buildings: bld from the host to the room (states, fallen, storeys, snapshot), bhit from anyone else to the host alone */
+  if (h.w.bld === 1) {
+    h.send({ t: 'bld', e: [40000, 2, 7, 3], f: [12], m: [5, 20] }); const y1 = await a.wait('bld'), y2 = await b.wait('bld'); ok(y1 && y2 && y1.e.join() === '40000,2,7,3' && y1.f.join() === '12' && y1.m.join() === '5,20' && !y1.full && !(await h.wait('bld', 120)), 'bld from the host reaches every guest, not the host');
+    h.send({ t: 'bld', s: [3, 'AQw/+', 9, ''], full: 1 }); const y3 = await a.wait('bld'); await b.wait('bld'); ok(y3 && y3.full === 1 && y3.s[1] === 'AQw/+', 'bld with a snapshot and full: 1 passes as it is');
+    a.send({ t: 'bld', e: [1, 2] }); ok(await none(b, 'bld') && await none(h, 'bld'), 'bld from a guest is dropped');
+    for (const m of [{ e: [1] }, { e: [1, 4] }, { e: [-1, 1] }, { e: [1.5, 1] }, { e: new Array(202).fill(1) }, { f: [70000] }, { f: 'x' }, { m: [1] }, { s: [1, 5] }, { s: [1, 'a b'] }, { s: [1, 'A'.repeat(401)] }, {}]) h.send(Object.assign({ t: 'bld' }, m));
+    ok(await none(a, 'bld'), 'malformed bld is dropped: odd length, a state over 3, an index out of range, too long, text that is not base 64, nothing in it');
+    a.send({ t: 'bhit', h: [12, 300, 21.5, 12, 301, -1], b: [100, 60, -200, 38, 130] }); const y4 = await h.wait('bhit'); ok(y4 && y4.from === a.id && y4.h.join() === '12,300,21.5,12,301,-1' && y4.b.join() === '100,60,-200,38,130' && await none(b, 'bhit'), 'bhit from a guest goes to the host alone, with its sender');
+    h.send({ t: 'bhit', h: [12, 300, 21.5] }); for (const m of [{ h: [12, 300] }, { h: [12, 5000, 3] }, { h: [12, 3, 0] }, { h: [12, 3, 2000] }, { b: [1, 2, 3, 4] }, { b: [1, 2, 3, 0, 5] }, { b: [1, 2, 3, 300, 5] }, { b: [1, 2, 3, 4, 3000] }, {}]) a.send(Object.assign({ t: 'bhit' }, m));
+    ok(await none(h, 'bhit'), 'bhit from the host, or malformed (not in threes or fives, an element or a damage or a radius out of range), is dropped');
+  }
   a.send({ t: 'ohit', h: [12, 30.5, 345, 999] }); const h1 = await h.wait('ohit'); ok(h1 && h1.from === a.id && h1.h.join() === '12,30.5,345,999' && await none(b, 'ohit'), 'ohit from a guest goes to the host alone, with its sender');
   h.send({ t: 'ohit', h: [12, 30] }); ok(await none(a, 'ohit') && await none(h, 'ohit'), 'ohit from the host itself goes nowhere');
   for (const e of [[12, 0], [12, -4], [12, 1001], [12, 'x'], [12], [70000, 5], [12, 1 / 0]]) a.send({ t: 'ohit', h: e }); a.send({ t: 'ohit' });
@@ -98,6 +111,33 @@ const N = require('./net'), { ok, done } = require('./harness');
     for (const i of [2 + nst, -1, 1.5, '2']) p2.send({ t: 'ord', i, target: null }); ok(await none(a, 'ord'), 'one naming a store that does not exist is dropped');
     h.send({ t: 'aiord', id: -9, i: 5, target: null }); ok((await a.wait('aiord') || {}).i === 5, 'and the host\'s AI release names its store too');
     for (const c of [p1, p2, p3, p4, p5, tk]) c.close();
+  }
+  { /* conquest and requisition */
+    const cq = o => Object.assign({ t: 'cq', n: 0, ph: 0, T: 2700, k: [600, 590], k0: 600, len: 1, p: [0, -100, 10, 0, -1, 0, 0, 0], l: [0, 0, 0, 0, 0, 0] }, o);
+    ok(h.w.cq === 1 && h.w.cqn === 0, 'welcome says cq: 1 and the match the room is in');
+    h.send(cq()); const c1 = await a.wait('cq'); ok(c1 && c1.k[1] === 590 && c1.p.length === 8 && c1.r === undefined, 'cq from the host is relayed');
+    await N.sleep(40); b.got.forEach(m => { m.seen = 1; }); a.send(cq()); ok(await none(b, 'cq'), 'cq from a guest is dropped');
+    for (const o of [{ p: [0, 1, 2] }, { p: [0, 'x', 0, 0] }, { k: [1] }, { ph: 2 }, { len: 7 }, { l: [0] }, { n: -1 }]) h.send(cq(o)); ok(await none(a, 'cq'), 'malformed cq is dropped');
+    h.send(cq({ ph: 1, r: [1, 2], w: 20 })); const c2 = await a.wait('cq'); ok(c2 && c2.ph === 1 && c2.r[0] === 1 && c2.w === 20, 'the result travels with it');
+    a.send({ t: 'down', by: null, det: 0 }); await a.wait('scores'); await N.sleep(40); a.got.forEach(m => { m.seen = 1; });
+    h.send(cq({ n: 1, p: [] })); const sc = await a.wait('scores'), c3 = await a.wait('cq'); ok(sc && sc.players.every(p => !p.deaths && !p.kills) && c3 && c3.n === 1, 'a new match number zeroes the room\'s scores');
+    const late = await join('inf', 'blueSaw'); ok(late.w && late.w.cqn === 1, 'and whoever joins is told the match number');
+    a.send({ t: 'req', cls: 'tank', model: 'abrams' }); const rq = await h.wait('req'); ok(rq && rq.from === a.id && rq.model === 'abrams', 'req from a soldier goes to the host alone');
+    ok(await none(b, 'req'), 'and to nobody else');
+    await N.sleep(520); a.send({ t: 'req', cls: 'tank', model: 't90' }); a.send({ t: 'req', cls: 'inf', model: 'blueSaw' }); ok(await none(h, 'req'), 'req for the other side\'s vehicle or for a soldier is dropped');
+    h.send({ t: 'reqa', to: a.id, cls: 'tank', model: 'abrams', why: '' }); const ra = await a.wait('reqa'); ok(ra && ra.why === '' && ra.model === 'abrams', 'reqa from the host reaches that soldier');
+    b.send({ t: 'reqa', to: a.id, cls: 'tank', model: 'abrams', why: '' }); ok(await none(a, 'reqa'), 'reqa from a guest is dropped');
+    b.got.forEach(m => { m.seen = 1; }); a.send({ t: 'swap', cls: 'tank', model: 'abrams', rq: 1 }); const sw = await b.wait('swap'); ok(sw && sw.rq === 1 && sw.model === 'abrams', 'a swap by requisition carries rq');
+    { /* radios */
+      const ro = await join('inf', 'blueRadio'), rv = await join('trn', 'mtlbu'); ok(ro.w && rv.w, 'a radio operator and a radio vehicle join');
+      h.send({ t: 'rad', e: [[1, 0, 0, 100, 200, 6, 0], [2, 2, 1, 300, 400, 16, 1]] }); const rr = await ro.wait('rad'); ok(rr && rr.e.length === 2 && rr.e[1][5] === 16, 'rad from the host is relayed');
+      await N.sleep(40); rv.got.forEach(m => { m.seen = 1; }); ro.send({ t: 'rad', e: [[1, 0, 0, 1, 2, 6, 0]] }); h.send({ t: 'rad', e: [[1, 3, 0, 1, 2, 6, 0]] }); h.send({ t: 'rad', e: [[1, 0, 0, 1, 2]] }); ok(await none(rv, 'rad'), 'rad from a guest, or malformed, is dropped');
+      ro.send({ t: 'rsp', id: 2 }); const rs = await h.wait('rsp'); ok(rs && rs.id === 2 && rs.from === ro.id, 'rsp from a soldier goes to the host');
+      ro.send({ t: 'rbe', k: 1, on: 1 }); rv.send({ t: 'rbe', k: 2, on: 1 }); const b1 = await h.wait('rbe'), b2 = await h.wait('rbe'); ok(b1 && b2 && b1.k === 1 && b2.k === 2 && b2.from === rv.id, 'rbe from the operator and from the vehicle go to the host');
+      ro.send({ t: 'rbe', k: 2, on: 1 }); rv.send({ t: 'rbe', k: 1, on: 1 }); ro.send({ t: 'rbe', k: 1, on: 3 }); ok(await none(h, 'rbe'), 'rbe of the wrong kind for the sender, or malformed, is dropped');
+      ro.close(); rv.close();
+    }
+    late.close();
   }
   for (const c of [h, a, b, w2]) c.close(); N.stop(); done();
 })().catch(e => { console.error(e); N.stop(); process.exit(1); });

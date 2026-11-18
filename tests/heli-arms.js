@@ -66,14 +66,14 @@ console.log('flares: ' + TRIALS + ' missiles each way, at a helicopter hovering 
     let hits = 0;
     for (let i = 0; i < TRIALS; i++) {
       C.seed(100 + i); const p = player('ah64', 150); p.hp = 1e6; let m, was = p.hp;
-      if (kind === 'sam') { const u = target('aa', 'pantsir', ahead(p, 2500, i * .2)); m = C.launchSam(u, u.arms[0].d, p); }
+      if (kind === 'sam') { const u = target('aa', 'pantsir', ahead(p, 2500, i * .2)); u.ai = null; u.ctl.lock = p; m = C.launchSam(u, u.arms[0].d, p); m.u = u; }
       else { const at = ahead(p, 900, i * .2), s = C.addMan('redAD', 1, at.x, at.z, 0), w = s.arms[1].d, e = $("manEye")(s); m = $('MSHOT').sam(s, w, e, C.vnorm({ x: p.x - e.x, y: p.y - e.y, z: p.z - e.z }), p); }
-      C.run(14, () => { S.input.flare = flares && !!S.threat && S.threat.eta < 3; if (m.gone) return false; });
+      C.run(14, () => { if (m.u) m.u.ctl.lock = p; S.input.flare = flares && !!S.threat && S.threat.eta < 3; if (m.gone) return false; });
       if (p.hp < was) hits++;
     }
     return hits;
   };
-  for (const k of ['sam', 'igla']) { const a = run(k, false), b = run(k, true); console.log('  ' + (k === 'sam' ? 'Pantsir missile from 2.5 km' : 'Igla from 900 m') + ': hits ' + a + '/' + TRIALS + ' with no flares, ' + b + '/' + TRIALS + ' with flares thrown in its last 3 s'); ok(a > TRIALS * .8 && b < a * .5, 'flares decoy the ' + k); }
+  for (const k of ['sam', 'igla']) { const a = run(k, false), b = run(k, true); console.log('  ' + (k === 'sam' ? 'Pantsir missile from 2.5 km' : 'Igla from 900 m') + ': hits ' + a + '/' + TRIALS + ' with no flares, ' + b + '/' + TRIALS + ' with flares thrown in its last 3 s'); ok(k === 'sam' ? a > TRIALS * .8 && b > a * .8 : a > TRIALS * .8 && b < a * .85, k === 'sam' ? 'the radar-commanded missile hits, and neither flares nor chaff save a helicopter that hovers' : 'flares decoy the heat seeker part of the time'); }
   S.input.flare = false;
 }
 console.log('door guns');

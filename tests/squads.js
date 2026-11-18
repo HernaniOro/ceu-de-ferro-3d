@@ -88,6 +88,6 @@ fresh(); {
   ok(n > 0, 'a battery shells a spotted squad that stands still (' + n + ' rounds, ' + q.men.filter(m => m.dead).length + ' of ' + q.n0 + ' killed); one soldier is worth ' + IAI.art + ', the still bonus ' + $('GAI').art.val.still);
 }
 console.log('-- counts --');
-for (const n of [1, 3, 4, 8]) { const W = $('WAVE')(n); console.log('   wave ' + n + ': enemy squads ' + W.foe.squad + ' in ' + W.foe.truck + ' trucks, own squads ' + W.own.squad + '; soldiers per squad ' + SQUAD.ww2.length + ' (1944) / ' + SQUAD.modern.length + ' (today), cap ' + IAI.cap); }
+{ const D = $('DIR'); console.log('   the director keeps ' + D.squad[0] + ' column squads a side in ' + D.truck[0] + ' trucks; soldiers per squad ' + SQUAD.ww2.length + ' (1944) / ' + SQUAD.modern.length + ' (today), cap ' + IAI.cap); }
 console.log('   online director: squads per side by humans on it ' + JSON.stringify($('DIR').squad));
 H.done();

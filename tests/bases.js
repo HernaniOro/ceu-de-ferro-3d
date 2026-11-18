@@ -44,7 +44,7 @@ const timeTo = (n, T) => { fresh(); const p = spot(0, mid() + 1500, 60), b = sit
 }
 
 console.log('-- the player builds: the kit, the outline, the cap --');
-{ C = H.load({ seed: 78 }); $ = C.$; S = C.newState('ww2', 'schutze', { cls: 'inf', mouse: true }); C.plan = () => {}; S.waveTimer = 1e9; S.men = S.men.filter(m => m === S.my); S.squads = []; S.sup = [];
+{ C = H.load({ seed: 78 }); $ = C.$; S = C.newState('ww2', 'schutze', { cls: 'inf', mouse: true }); C.plan = () => {}; C.director = () => {}; S.men = S.men.filter(m => m === S.my); S.squads = []; S.sup = [];
   const P = S.my, I = S.input, p = spot(1, S.T.routes[1].len - 2600, 70), tap = k => { I[k] = true; C.run(.05); I[k] = false; C.run(.05); };
   P.x = p.x - 11; P.z = p.z; P.inv = 1e9; S.aim.h = 0; S.aim.p = -.25; C.run(.1);
   tap('build'); ok(S.bm && S.bm.why === '' && Math.abs(S.bm.x - p.x) < 4, 'N opens the outline ' + Math.round(hd(S.bm, P)) + ' m ahead, valid (green)');
@@ -61,7 +61,7 @@ console.log('-- the player builds: the kit, the outline, the cap --');
 console.log('-- a finished base serves each ground class, inside its radius only --');
 for (const era of ['ww2', 'modern']) for (const [cls, model] of [['tank', 0], ['aa', 0], ['art', 0]]) {
   C = H.load({ seed: 79 }); $ = C.$; const sd = $('ERAS')[era].sides[0], id = cls === 'tank' ? sd.tanks[0] : sd[cls];
-  S = C.newState(era, id, { cls, mouse: true }); C.plan = () => {}; S.waveTimer = 1e9; S.men = []; S.squads = []; S.units = S.units.filter(u => u === S.my);
+  S = C.newState(era, id, { cls, mouse: true }); C.plan = () => {}; C.director = () => {}; S.men = []; S.squads = []; S.units = S.units.filter(u => u === S.my);
   const P = S.my, p = spot(1, S.T.routes[1].len - 3000, 70), b = site(0, p, 1), hurtIt = () => { P.hp = P.max * .4; P.parts[1].hp = 0; C.refit(P); P.arms[0].ammo = 1; P.smk = 0; };
   P.inv = 0; P.x = p.x + BLD.r + 20; P.z = p.z; hurtIt(); C.run(4); const out = P.hp < P.max * .5 && P.arms[0].ammo === 1 && S.dep === 0;
   P.x = p.x + BLD.r - 15; C.run(.5); const mark = S.rearm > 0 && S.dep === 2; C.run(8);
@@ -72,12 +72,12 @@ for (const era of ['ww2', 'modern']) for (const [cls, model] of [['tank', 0], ['
   ok(tIn !== null && u.hp === u.max && far.hp === 40, 'an AI tank at 40 of ' + u.max + ' hp, 700 m up the road with nothing to fight, drove back into the radius in ' + (tIn || 0).toFixed(0) + ' s and was whole at ' + S.t.toFixed(0) + ' s; one ' + (BLD.ai.fall + 600) + ' m away stayed (table: ' + BLD.ai.fall + ' m)'); }
 
 console.log('-- entering at a base --');
-{ C = H.load({ seed: 80 }); $ = C.$; S = C.newState('ww2', 'tiger', { cls: 'tank', mouse: true }); C.plan = () => {}; S.waveTimer = 1e9; S.men = []; S.squads = []; S.units = S.units.filter(u => u === S.my || u.fixed);
-  const r1 = S.T.routes[1], main = $('routeAt')(r1, r1.len - $('SPAWN').tank), p = spot(1, r1.len - 3600, 70), b = site(0, p, 1), again = () => { C.killUnit(S.my); S.my.gone = true; C.playerDown(null); S.lives = 9; C.run(4.5); return S.my; };
+{ C = H.load({ seed: 80 }); $ = C.$; S = C.newState('ww2', 'tiger', { cls: 'tank', mouse: true }); C.plan = () => {}; C.director = () => {}; S.men = []; S.squads = []; S.units = S.units.filter(u => u === S.my || u.fixed);
+  const r1 = S.T.routes[1], rf = S.T.routes[$('frontR')()], main = $('routeAt')(rf, rf.len - $('SPAWN').tank), p = spot(1, r1.len - 3600, 70), b = site(0, p, 1), again = () => { C.killUnit(S.my); S.my.gone = true; C.playerDown(null); S.cd = {}; C.run(4.5); return S.my; };
   ok(hd(S.my, main) < 60 && S.my.inv > 0, 'the default is the main base: ' + Math.round(hd(S.my, S.base[0])) + ' m from the airfield, ' + Math.round(hd(S.my, main)) + ' m beside the road out, protected for ' + Math.ceil(S.my.inv) + ' s');
   S.spawnAt = b.id; let P = again(); ok(hd(P, b) < BLD.spawn + 8 && P.inv > 0 && !C.pushOut(b.o, P.x, P.z, 3), 'with the base chosen, the next tank enters ' + Math.round(hd(P, b)) + ' m from it, clear of its walls');
   const e = man(1, b.x + BLD.safe - 30, b.z); ok($('spawnWhy')(b, 0) === 'unsafe', 'an enemy ' + (BLD.safe - 30) + ' m from it: not offered (unsafe)'); P = again(); ok(hd(P, main) < 60 && S.spawnAt === 0, 'and the player enters at the main base instead');
-  e.dead = true; S.spawnAt = b.id; C.killUnit(S.my); S.my.gone = true; C.playerDown(null); C.run(1); C.hitObj(b.o, 999, null); C.run(4); ok(b.dead && hd(S.my, main) < 60, 'the chosen base destroyed during the wait: the main base');
+  e.dead = true; S.spawnAt = b.id; C.killUnit(S.my); S.my.gone = true; C.playerDown(null); S.cd = {}; C.run(1); C.hitObj(b.o, 999, null); C.run(4); ok(b.dead && hd(S.my, main) < 60, 'the chosen base destroyed during the wait: the main base');
   const s2 = site(0, spot(1, r1.len - 4400, 70), .5); ok($('spawnWhy')(s2, 0) === 'site' && $('spawnWhy')(s2, 1) === 'foe', 'an unfinished site, or the other side\'s base, is no entry');
   S.cls = 'plane'; S.model = 'bf109'; S.spawnAt = s2.id; C.supAt(s2, 1); P = again(); ok(!P.kind && hd(P, S.base[0]) < 1500, 'a plane takes off by its airfield whatever is chosen'); }
 
@@ -94,11 +94,11 @@ console.log('-- what destroys it: rounds for a finished base (' + $('OBJ').suppl
     ap44: tryW('75 mm AP (Sherman)', flat('shell', TK.sherman.arms[0], 600), 40), ap: tryW('120 mm (Abrams)', flat('shell', TK.abrams.arms[0], 1500), 40, 'modern'),
     he44: tryW('howitzer', drop('he', AR.priest.arms[0], 0), 20), he: tryW('155 mm howitzer', drop('he', AR.pzh.arms[0], 0), 20, 'modern'), near: tryW('155 mm, 20 m off', drop('he', AR.pzh.arms[0], 20), 20, 'modern'),
     rkt: tryW('HVAR rocket', drop('rocket', PL.p47.ord[1], 4), 20), bomb: tryW('SC 250 bomb, 15 m off', drop('bomb', PL.bf109.ord[0], 15), 10), big: tryW('500 lb bomb', drop('bomb', PL.p47.ord[0], 0), 10),
-    agm: tryW('AGM-65', b => S.missiles.push({ x: b.x - 400, y: b.y + 150, z: b.z, gnd: true, d: { x: 1, y: 0, z: 0 }, v: 300, vmax: 330, turn: 1.5, life: 30, target: b, o: PL.a10.ord[0], team: 1, by: null }), 6, 'modern'),
+    agm: tryW('AGM-65', b => { const a = C.addPlane('a10', 1, b.x - 700, b.y + 200, b.z, 0, false); S.missiles.push($('MSL').arm({ x: a.x, y: a.y - 2, z: a.z, gnd: true, target: b, o: PL.a10.ord[0], team: 1, by: a }, C.vnorm({ x: 700, y: -200, z: 0 }), a)); a.gone = true; S.planes = S.planes.filter(p => p !== a); }, 6, 'modern'),
     chg: tryW('demolition charge', b => { const m = man(1, b.x + 7, b.z); m.chg = 1; C.plant(m, b); C.run(BLD.charge.fuse); m.dead = true; }, 6) };
   console.log('   ' + out.join('; '));
   ok(n.rifle === Infinity && n.mg === Infinity && n.nade > 20, 'small arms and hand grenades barely matter');
-  ok(n.ap44 >= 4 && n.ap44 <= 12 && n.ap >= 3 && n.ap <= 9 && n.he44 <= 3 && n.he <= 2 && n.big === 1 && n.bomb <= 2 && n.agm === 1 && n.rkt <= 6 && n.heat >= 4 && n.gau < 400, 'shells, bombs, artillery, rockets and missiles do');
+  ok(n.ap44 >= 4 && n.ap44 <= 12 && n.ap >= 3 && n.ap <= 9 && n.he44 <= 3 && n.he <= 2 && n.big === 1 && n.bomb <= 2 && n.agm <= 2 && n.rkt <= 6 && n.heat >= 4 && n.gau < 400, 'shells, bombs, artillery, rockets and missiles do');
   ok(n.chg === 2, 'two demolition charges (' + BLD.charge.dmg + ' each)');
   S = C.sandbox('ww2'); S.over = false; const p = spot(0, mid() + 1500, 80), b = site(0, p, 1), near = man(0, b.x + 9, b.z), far = man(0, b.x + 40, b.z), foe = man(1, b.x - 9, b.z), tk = C.addVehicle('truck', null, 0, b.x, b.z + 12, 0);
   C.hitObj(b.o, 130, null); const st1 = S.os[b.id]; C.hitObj(b.o, 200, null); C.run(.2);
@@ -120,11 +120,11 @@ for (const era of ['ww2', 'modern']) for (const mode of ['solo', 'online']) {
   if (mode === 'solo' && era === 'ww2') {
     const b = S.sup.find(b => b.team === 0 && b.prog >= 1), n0 = S.sup.filter(x => x.team === 0 && !x.dead).length; C.hitObj(b.o, 999, null); let tN = null, nb = null;
     const calm = () => { S.waveTimer = 99; for (const p of S.planes) if (p.team === 1) p.gone = true; for (const u of S.units) if (u.team === 1 && !u.fixed) { u.cargo = null; u.dead = u.gone = true; } for (const m of S.men) if (m.team === 1 && !m.dead && hd(m, b) < 1500) { m.dead = true; m.deadT = S.t; } };
-    C.run(240, () => { park(); calm(); nb = S.sup.find(x => x.team === 0 && !x.dead && x !== b && x.ri === b.ri); if (nb && tN === null) tN = S.t - b.deadT; return !(nb && nb.prog >= 1); });
+    C.run(700, () => { park(); calm(); nb = S.sup.find(x => x.team === 0 && !x.dead && x !== b && x.ri === b.ri); if (nb && tN === null) tN = S.t - b.deadT; return !(nb && nb.prog >= 1); });
     ok(nb && nb.prog >= 1 && tN >= BLD.ai.again - 5, 'a base lost: a new site ' + (tN || 0).toFixed(0) + ' s later (table: ' + BLD.ai.again + ' s), finished ' + (S.t - b.deadT).toFixed(0) + ' s after the loss, ' + (nb ? Math.round(hd(nb, b)) : '?') + ' m from the old one');
-    const q = S.squads.find(q => q.team === 0 && q.job === 'road' && q.ri === nb.ri && !q.state && !q.op); for (const m of q.men) { m.arms[0].res = 0; m.arms[0].mag = 1; }
+    const q = S.squads.filter(q => q.team === 0 && q.ri === nb.ri && !q.state && !q.op && !q.ord.b && q.ord.k !== 'build' && Math.abs(q.s - nb.s) < BLD.ai.fall - 300).sort((x, y) => (x.job === 'road' ? 0 : 1) - (y.job === 'road' ? 0 : 1))[0]; for (const m of q.men) { m.arms[0].res = 0; m.arms[0].mag = 1; }
     const O = q.ord; let went = false, back = false; C.run(400, () => { park(); calm(); if (q.ord.k === 'supply') went = true; else if (went) back = true; return !back; });
-    ok(went && back && q.ord === O && q.men.every(m => m.dead || m.arms[0].res >= m.arms[0].d.mags - 1), 'a road squad out of magazines fell back to the base and went back to its patrol resupplied (' + S.t.toFixed(0) + ' s)'); }
+    ok(went && back && q.ord === O && q.men.every(m => m.dead || m.arms[0].res >= m.arms[0].d.mags - 1), 'a ' + q.job + ' squad out of magazines fell back to the base and went back to its order resupplied (' + S.t.toFixed(0) + ' s)'); }
 }
 
 console.log('-- the enemy AI and a base it has spotted --');

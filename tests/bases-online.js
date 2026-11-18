@@ -16,7 +16,7 @@ async function client(name, cls, model, keep) {
 }
 async function run(secs, each) {
   for (let i = 0, n = Math.round(secs / dt); i < n; i++) {
-    for (const c of all) if (c.on) { c.step(dt); c.Net.tick(dt); }
+    for (const c of all) if (c.on) { if (c.S.cd) c.S.cd = {}; c.step(dt); c.Net.tick(dt); }   // no countdown on a lost model: what is checked here is the return, not the wait
     if (each && each() === false) return false;
     if (i % 2 === 0) await new Promise(r => setImmediate(r));
   }

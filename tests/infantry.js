@@ -47,7 +47,7 @@ const rifleOn = (kind, id) => {
   fresh(); const m = C.addMan('rifleman', 1, B.x, B.z, 0), t = kind === 'inf' ? C.addMan('schutze', 0, B.x + 120, B.z, 0) : C.addVehicle(kind, id, 0, B.x + 120, B.z, kind === 'art' ? 0 : Math.PI);
   const hp0 = t.hp, c0 = t.parts ? t.parts.map(p => p.hp).join() : ''; t.hp = t.max = 1e6; m.arms[0].mag = 1e9; m.arms[0].d = Object.assign({}, m.arms[0].d, { rate: .1 });
   m.ctl.fire = true; C.run(kind === 'art' ? 40 : 7, () => { aimAt(m, t, kind === 'art' ? 1.5 : 0); m.held = false; });
-  return { dmg: 1e6 - t.hp, parts: t.parts ? t.parts.map(p => p.hp).join() !== c0 : false, crew: t.def.crewI >= 0 ? t.parts[t.def.crewI].hp : null };
+  return { dmg: 1e6 - t.hp, parts: t.parts ? t.parts.map(p => p.hp).join() !== c0 : false, crew: t.def.parts && t.def.parts.pos && t.def.parts.pos.length ? t.def.parts.pos.filter(i => t.parts[i].hp > 0).length : null };
 };
 const rI = rifleOn('inf'), rT = rifleOn('truck'), rA = rifleOn('aa', 'wirbel'), rK = rifleOn('tank', 'tiger'), rH = rifleOn('art', 'hummel');
 fresh('modern'); const rP = rifleOn('art', 'pzh');
@@ -92,7 +92,7 @@ const sam = flares => {
   let kills = 0, hits = 0, n = 0;
   for (let i = 0; i < 20; i++) {
     fresh('modern'); const p = C.addPlane('su25', 1, B.x + 1500, g + 500, B.z - 1500, -Math.PI / 2, false), m = C.addMan('blueAD', 0, B.x, B.z, 0), hp = p.hp; let fired = false;
-    p.flares = flares ? 40 : 0; m.ctl.w = m.w = 1; m.ctl.fire = true; p.ctl.thr = 1;
+    p.flares = flares ? 40 : 0; m.ctl.w = m.w = 1; m.ctl.fire = true; p.ctl.thr = .8;
     C.run(7, () => { aimAt(m, p); p.y = g + 500; p.v.y = 0; if (S.missiles.length) fired = true; if (flares && fired && S.missiles.length) C.dropFlare(p); return !p.dead; });
     if (fired) n++; if (p.dead) kills++; if (p.hp < hp) hits++;
   }
@@ -101,7 +101,7 @@ const sam = flares => {
 const s0 = sam(false), s1 = sam(true);
 console.log('   no flares: ' + s0.n + ' launched, ' + s0.hits + ' hit, ' + s0.kills + ' shot down; with flares: ' + s1.n + ' launched, ' + s1.hits + ' hit');
 ok(s0.n >= 18 && s0.hits >= 14, 'it locks and hits a plane');
-ok(s1.hits < s0.hits * .6, 'flares decoy it');
+ok(s1.hits < s0.hits * .85, 'flares decoy it part of the time (target out of afterburner)');
 
 console.log('-- run over --');
 fresh(); { const m = C.addMan('rifleman', 0, B.x + 60, B.z, 0), f = C.addMan('schutze', 1, B.x + 30, B.z + 1, 0), t = C.addVehicle('tank', 'tiger', 1, B.x, B.z, 0); t.ctl.drive = 1;

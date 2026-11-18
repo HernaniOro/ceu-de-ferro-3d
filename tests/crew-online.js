@@ -24,7 +24,7 @@ async function run(secs, each) {
 const put = (c, x, z, h) => { const P = c.S.my; P.x = x; P.z = z; P.y = P.man ? c.$('manY')(x, z) : c.hgt(x, z); if (h !== undefined) { P.h = h; if (c.S.aim) c.S.aim.h = h; } P.inv = 0; };
 const press = async (c, k) => { c.S.input[k] = true; await run(.05); c.S.input[k] = false; await run(.25); };
 const gh = (c, o) => c.Net.ghosts.get(o.id), rec = (c, o) => c.Net.players.get(o.id), near = (c, u) => [...c.Net.ai.values()].find(o => o.occ && Math.hypot(o.x - u.x, o.z - u.z) < 6);
-const cars = c => c.S.units.filter(u => u.kind === 'car' && !u.dead).length;
+const cars = c => c.S.units.filter(u => u.id === 'hmmwv' && !u.dead).length;   // by model: the director's radio vehicles are cars too
 
 (async () => {
   await N.start(); console.log('server: ' + N.SERVER + '\npage:   ' + H.PAGE);

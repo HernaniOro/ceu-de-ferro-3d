@@ -4,3 +4,5 @@ node_modules/
 .DS_Store
 tests/logs/
 *.tmp
+.omc/
+*.bak

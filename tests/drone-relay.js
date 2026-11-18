@@ -1,0 +1,30 @@
+'use strict';
+/* the relay server and the drone messages: welcome.dr, the operator kits, dstate, dai, dhit */
+const N = require('./net'), { ok, done } = require('./harness');
+const none = async (c, t) => !(await c.wait(t, 150));
+(async () => {
+  await N.start(); console.log('server: ' + N.SERVER);
+  const h = await N.raw(), a = await N.raw(), b = await N.raw();
+  h.send({ t: 'join', room: 'modern', name: 'H', cls: 'inf', model: 'redDrone' }); const w = await h.wait('welcome');
+  ok(w && w.dr === 1 && w.inf === 1 && w.crew === 1, 'welcome says dr: 1 beside the flags it had, and the red operator kit joins');
+  a.send({ t: 'join', room: 'modern', name: 'A', cls: 'inf', model: 'blueDrone' }); const wa = await a.wait('welcome');
+  b.send({ t: 'join', room: 'modern', name: 'B', cls: 'inf', model: 'blueRifle' }); const wb = await b.wait('welcome');
+  ok(wa && wb && wa.players.find(p => p.name === 'H').model === 'redDrone', 'the blue one too');
+  const st = { t: 'dstate', i: 0, k: 0, p: [1, 2, 3], q: [0, 0, 0, 1], v: [4, 5, 6], f: 1 + 64 };
+  a.send(st); const m = await h.wait('dstate'); ok(m && m.from === wa.id && m.f === 1 && m.p[2] === 3 && m.k === 0, 'dstate from an operator reaches the room, flags masked');
+  await N.sleep(60); h.got.forEach(x => { x.seen = 1; });
+  b.send(st); for (const bad of [{ i: 2 }, { k: 9 }, { p: [1, 2] }, { q: [0, 0, 1] }, { f: 1.5 }]) a.send(Object.assign({}, st, bad));
+  ok(await none(h, 'dstate'), 'dstate from another kit, or with a bad slot, type, vector or flag, is dropped');
+  const row = [-3, 3, 1, 10, 20, 30, 0, 0, 0, 1, 5, 0, 5, 1];
+  h.send({ t: 'dai', e: [row] }); const d = await a.wait('dai'); ok(d && d.e.length === 1 && d.e[0][0] === -3, 'dai from the host is relayed');
+  await N.sleep(60); b.got.forEach(x => { x.seen = 1; });
+  a.send({ t: 'dai', e: [row] }); h.send({ t: 'dai', e: [row.slice(1)] }); h.send({ t: 'dai', e: [[3].concat(row.slice(1))] }); h.send({ t: 'dai', e: Array.from({ length: 17 }, () => row) });
+  ok(await none(b, 'dai'), 'dai from a guest, with a short row, a positive id or more than 16 rows is dropped');
+  b.send({ t: 'dhit', to: wa.id, i: 0, dmg: 3.5 }); const x = await a.wait('dhit'); ok(x && x.from === wb.id && x.dmg === 3.5 && x.i === 0 && (await none(h, 'dhit')), 'dhit on a player\'s drone goes to that player alone');
+  b.send({ t: 'dhit', to: -3, dmg: 2 }); const y = await h.wait('dhit'); ok(y && y.to === -3 && y.from === wb.id && (await none(a, 'dhit')), 'dhit on an AI drone goes to the host alone');
+  await N.sleep(60); h.got.forEach(x => { x.seen = 1; }); a.got.forEach(x => { x.seen = 1; });
+  b.send({ t: 'dhit', to: wa.id, i: 0, dmg: -1 }); b.send({ t: 'dhit', to: wa.id, i: 3, dmg: 1 }); b.send({ t: 'dhit', to: 99, i: 0, dmg: 1 }); h.send({ t: 'dhit', to: -3, dmg: 1 });
+  ok((await none(a, 'dhit')) && (await none(h, 'dhit')), 'bad damage, a bad slot, nobody, and the host hitting its own are dropped');
+  h.send({ t: 'ai', k: 2, e: [[-5, 13, 1, 22, 1, 1, 2, 3, 0]] }); ok(!!(await a.wait('ai')), 'an AI soldier row may name the operator kit (index 13)');
+  h.close(); a.close(); b.close(); N.stop(); done();
+})().catch(e => { console.error(e); process.exit(1); });

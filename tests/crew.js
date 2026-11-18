@@ -4,7 +4,7 @@
    the respawn; the planner's ride reusing a left truck; the cleanup of left vehicles */
 const H = require('./harness'), C = H.load({ seed: 31 }), $ = C.$, ok = H.ok, dt = 1 / 60;
 let S, I;
-const game = (era, cls, model) => { S = C.newState(era, model, { cls, mouse: true }); S.over = false; S.lives = 3; I = S.input; S.units = S.units.filter(u => u === S.my); S.planes = []; S.men = S.men.filter(m => m === S.rider || m === S.my); S.squads = []; S.over = true; C.step(dt); return S; };
+const game = (era, cls, model) => { S = C.newState(era, model, { cls, mouse: true }); S.over = false; I = S.input; S.units = S.units.filter(u => u === S.my); S.planes = []; S.men = S.men.filter(m => m === S.rider || m === S.my); S.squads = []; S.over = true; C.step(dt); return S; };
 const tap = k => { I[k] = true; C.step(dt); I[k] = false; C.step(dt); };
 
 console.log('a Transporte player is a soldier at the wheel');
@@ -14,10 +14,10 @@ console.log('a Transporte player is a soldier at the wheel');
   ok(u.kind === 'car' && m && m.man && m.in === u && m.seat === 0 && u.occ[0] === m && m.id === 'blueRifle', 'entering as HMMWV: the vehicle is S.my and a rifleman of the side sits at the wheel');
   const x0 = u.x, z0 = u.z; S.aim.h = u.h; I.up = true; C.run(3); I.up = false; I.brake = true; C.run(3); I.brake = false;
   ok(Math.hypot(u.x - x0, u.z - z0) > 15 && Math.hypot(m.x - u.x, m.z - u.z) < 6, 'it drives, the soldier with it');
-  u.arms[0].ammo = 123; u.hp = u.max - 9; u.smk = 0; const lives = S.lives;
+  u.arms[0].ammo = 123; u.hp = u.max - 9; u.smk = 0; const lives = S.cq.tk[0];
   tap('yawR');
   ok(S.my === m && !m.in && !S.rider && !m.dead && Math.hypot(m.x - u.x, m.z - u.z) < 9 && S.aim, 'E, stopped: the player is the soldier on foot beside it');
-  ok(!u.dead && $('parked')(u) && u.left && u.arms[0].ammo === 123 && u.hp === u.max - 9 && S.lives === lives && !S.respawn, 'the HMMWV stays, parked and empty, with its damage and its 123 rounds; no life spent');
+  ok(!u.dead && $('parked')(u) && u.left && u.arms[0].ammo === 123 && u.hp === u.max - 9 && S.cq.tk[0] === lives && !S.respawn, 'the HMMWV stays, parked and empty, with its damage and its 123 rounds; no ticket spent');
   C.run(2); ok(!u.ctl.fire[0] && u.sp === 0 && S.near === u && S.nearS === 0, 'nobody in it: the gun is silent, and the soldier beside it is offered the wheel');
   const x1 = m.x; I.up = true; C.run(1.5); I.up = false;
   ok(Math.hypot(m.x - x1, 0) + Math.abs(m.z - u.z) > 1 && S.my === m, 'on foot the soldier walks with the infantry controls');
@@ -38,8 +38,8 @@ console.log('a Transporte player is a soldier at the wheel');
   const e = C.addMan('redRifle', 1, u.x + 3, u.z + 3, 0); ok(!$('canBoard')(e, u), 'an enemy soldier cannot board the HMMWV');
   e.gone = true;
   /* the driver killed in the seat */
-  const d0 = S.lives; m.inv = 0; m.hp = 0; m.dead = true; m.deadT = S.t; C.run(.5);
-  ok(S.my === m && !t.dead && $('parked')(t) && !t.occ[0] && S.respawn > 0 && S.lives === d0 - 1, 'the driver dies in the seat: one life, and the truck stays, parked');
+  const d0 = S.cq.tk[0]; m.inv = 0; C.killMan(m, null); C.run(.5);
+  ok(S.my === m && !t.dead && $('parked')(t) && !t.occ[0] && S.respawn > 0 && S.cq.tk[0] === d0 - $('CQ').cost.inf, 'the driver dies in the seat: a soldier\'s ticket, and the truck stays, parked');
   S.over = false; C.run(4.5); S.over = true;
   ok(S.my !== m && S.my.kind === 'car' && S.my.def.id === 'hmmwv' && S.rider && S.rider.in === S.my, 'the respawn is the class chosen: an HMMWV with a soldier at the wheel');
 }
@@ -47,9 +47,9 @@ console.log('the vehicle lost with the player in it');
 {
   let out = 0, dead = 0;
   for (let i = 0; i < 30; i++) {
-    game('modern', 'trn', 'hemtt'); const u = S.my, m = S.rider, l = S.lives; u.inv = 0; m.inv = 0; u.lastK = $('HK').shell; u.hitT = S.t; C.ruin(u, 1e6, null); C.run(.3);
+    game('modern', 'trn', 'hemtt'); const u = S.my, m = S.rider, l = S.cq.tk[0], K = $('CQ').cost; u.inv = 0; m.inv = 0; u.lastK = $('HK').shell; u.hitT = S.t; C.ruin(u, 1e6, null); C.run(.3);
     if (!u.dead || S.my !== m || m.in) { ok(false, 'trial ' + i + ': the truck is destroyed and the player is its soldier'); break; }
-    if (m.dead) { dead++; if (S.lives !== l - 1) ok(false, 'a dead soldier costs a life'); } else { out++; if (S.lives !== l || S.respawn) ok(false, 'a soldier who got out costs nothing'); }
+    if (m.dead) { dead++; if (S.cq.tk[0] !== l - K.truck - K.inf) ok(false, 'a dead soldier costs its ticket and the truck\'s'); } else { out++; if (S.cq.tk[0] !== l - K.truck || S.respawn) ok(false, 'a soldier who got out costs nothing'); }
   }
   ok(out > 3 && dead > 3, 'a HEMTT destroyed 30 times: the driver gets out hurt ' + out + ' times and dies ' + dead + ' (a life only then)');
 }

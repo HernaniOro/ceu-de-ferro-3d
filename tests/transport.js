@@ -154,7 +154,7 @@ console.log('LAV');
   ok(l.x > rx + 300 && wet > 20 && b.x > rx + 300, 'the LAV-25 and the BTR-82A swim the river (' + f1(wet) + ' s afloat, across in ' + f1(t) + ' s)');
   ok(tr.x < rx2, 'a truck stops at the water (' + Math.round(rx2 - tr.x) + ' m short of the middle)');
   box('modern'); const s = veh('lav25', 0, BX, BZ, 0), n0 = s.smk; C.popSmoke(s); ok(n0 === 2 && s.smk === 1 && S.smokes.length === 1, 'smoke launchers: 2 salvos, one fired puts up a screen');
-  ok(s.def.parts.map(p => p.id).join() === 'hull,wheelL,wheelR,engine,gun,turret,crew', 'parts: ' + s.def.parts.map(p => p.lab).join(', '));
+  ok(s.def.parts.map(p => p.id).join() === 'hull,wFL,wFR,wRL,wRR,steer,engine,trans,fuel,trav,gun,sight,driver,gunner,cmdr', 'parts: ' + s.def.parts.map(p => p.lab).join(', '));
 }
 
 console.log('sniper');
@@ -198,14 +198,14 @@ console.log('sniper');
     const e = C.manEye(m), tt = 200 / m.arms[0].d.spd; m.f = C.vnorm({ x: tx - e.x, y: ty + .5 * GR * tt * tt - e.y, z: tz - e.z });
     const hp = u.hp, parts = u.parts.map(p => p.hp); let lab = null; const F = S.floats.length;
     C.snipe(m, m.arms[0]); let n = 0; while (S.slugs.length && n++ < 200) C.step(1 / 120);
-    const i = u.parts.findIndex((p, k) => k && p.hp < parts[k]); return { u, d: hp - u.hp, pt: i > 0 ? u.def.parts[i].id : hp > u.hp ? 'hull' : '-', drive: u.mod.drive, crew: u.def.crewI >= 0 ? u.parts[u.def.crewI].hp : 0 };
+    const i = u.parts.findIndex((p, k) => k && p.hp < parts[k]); return { u, d: hp - u.hp, pt: i > 0 ? u.def.parts[i].id : hp > u.hp ? 'hull' : '-', drive: u.mod.drive, crew: u.def.parts.pos.filter(i => u.parts[i].hp > 0).length };
   };
   const fixed = (kind, id) => () => { const u = C.addUnit(kind, 1, BX + 300, BZ - 100, id, true); u.ai = null; u.h = 0; return u; };
   const row = [];
   for (const [nm, mk, d] of [['Ural', fixed('truck'), TRNS.ural], ['Tigr', fixed('car'), TRNS.tigr], ['BTR-82A', fixed('lav'), TRNS.btr82]]) {
     const eng = am('modern', 'blueSniper', mk, d.l * .34 * GS, (.5 + d.hh / 2) * GS), wh = am('modern', 'blueSniper', mk, d.kind === 'lav' ? 0 : -d.l * .2 * GS, .35 * GS), hull = am('modern', 'blueSniper', mk, -d.l * .2 * GS, (.6 + d.hh * .7) * GS);
     row.push(nm + ': engine shot -> ' + eng.pt + ' -' + f1(eng.d) + ' hp, drive ' + pct(eng.drive) + '; wheel shot -> ' + wh.pt + ', drive ' + pct(wh.drive) + '; body shot -> ' + hull.pt + ' -' + f1(hull.d) + ' hp');
-    ok(eng.pt === 'engine' && /wheel/.test(wh.pt) && hull.d > 0 && eng.drive < 1 && wh.drive < 1, nm + ': the round lands on the part aimed at (engine, wheels, hull) and hurts it');
+    ok(eng.pt === 'engine' && /^w[FR][LR]$/.test(wh.pt) && hull.d > 0 && eng.drive < 1 && wh.drive < 1, nm + ': the round lands on the part aimed at (engine, wheels, hull) and hurts it');
   }
   console.log('    ' + row.join('\n    '));
   { let crew = 0; for (let i = 0; i < 60; i++) { const r = am('modern', 'blueSniper', fixed('truck'), 0, (.6 + 1.1 * .5) * GS); if (r.crew < 2) crew++; } ok(crew > 8, 'a round through the body of a truck takes one of its crew ' + pct(crew / 60) + ' of the time'); }

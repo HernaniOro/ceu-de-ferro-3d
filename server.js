@@ -4,7 +4,8 @@
    the earliest-joined player still in the room, whose client simulates the room's AI battle. AI entities have negative ids.
    welcome names what this server knows, so that a page can tell an older one: swap, inf, obj, sup (supply bases: base and build),
    trn (transport: the class trn, the sniper kits, and the messages board, seats, eject and cargo), cmd (the commander: the mortar kits,
-   toss k 3 and 4, s on shot and aishot, and the message cmd). */
+   toss k 3 and 4, s on shot and aishot, and the message cmd), eco (the economy: eco, ecs, keep) and gen (the general: gen, glog, gclaim,
+   gctl, gcmd, gask, gres; messages private to a side go only to that side's players, and cmd too). */
 const http = require('http'), fs = require('fs'), os = require('os'), path = require('path');
 const { WebSocketServer } = require('ws');
 
@@ -12,12 +13,12 @@ const PORT = +process.env.PORT || 8080, PAGE = path.join(__dirname, 'Céu de Fer
 /* valid models per room and class, the first half of each list on side 0 and the second on side 1; the page's PLANES, TANKS, AAS, ARTS and
    INF tables are the other copy. inf: the infantry kits, in the order an AI soldier's snapshot row names them by index */
 const MODELS = {
-  ww2: { plane: ['stuka', 'bf109', 'spit', 'p47'], tank: ['tiger', 'pz4', 'sherman', 't34'], aa: ['wirbel', 'm16'], art: ['hummel', 'priest'], inf: ['schutze', 'mgschutze', 'pzjager', 'scharf', 'grwTrupp', 'rifleman', 'bargunner', 'bazookaman', 'sniper', 'mortarman'], trn: ['kubel', 'opel', 'jeep', 'gmc'] },
-  modern: { plane: ['f22', 'a10', 'su57', 'su25'], tank: ['abrams', 'leo2', 't90', 't72'], aa: ['nasams', 'pantsir'], art: ['pzh', 'msta'], inf: ['blueRifle', 'blueSaw', 'blueAT', 'blueAD', 'blueSniper', 'blueMortar', 'redRifle', 'redMG', 'redAT', 'redAD', 'redSniper', 'redMortar'], trn: ['hmmwv', 'hemtt', 'lav25', 'tigr', 'ural', 'btr82'] }
+  ww2: { plane: ['stuka', 'bf109', 'spit', 'p47'], tank: ['tiger', 'pz4', 'sherman', 't34'], aa: ['wirbel', 'm16'], art: ['hummel', 'priest'], inf: ['schutze', 'mgschutze', 'pzjager', 'scharf', 'grwTrupp', 'funker', 'rifleman', 'bargunner', 'bazookaman', 'sniper', 'mortarman', 'radioman'], trn: ['kubel', 'opel', 'sdkfz251', 'jeep', 'gmc', 'm3ht'] },
+  modern: { plane: ['f22', 'a10', 'su57', 'su25'], tank: ['abrams', 'leo2', 't90', 't72'], aa: ['nasams', 'pantsir'], art: ['pzh', 'msta'], inf: ['blueRifle', 'blueSaw', 'blueAT', 'blueAD', 'blueSniper', 'blueMortar', 'blueRadio', 'redRifle', 'redMG', 'redAT', 'redAD', 'redSniper', 'redMortar', 'redRadio'], trn: ['hmmwv', 'hemtt', 'lav25', 'm577', 'tigr', 'ural', 'btr82', 'mtlbu'] }
 };
 /* helicopters: aircraft to every check of an AI row or a loss, a class of their own to join, swap and hstate. None in 1944 */
 MODELS.ww2.heli = []; MODELS.modern.heli = ['ah64', 'uh60', 'mi28', 'mi8'];
-/* plane loadouts, the other copy of the page's RACKS and STORES. LOADS: per plane the kg it lifts and, per hardpoint group, the most of each
+/* plane and helicopter loadouts (welcome says lo: 1 and hlo: 1), the other copy of the page's RACKS and STORES. LOADS: per plane the kg it lifts and, per hardpoint group, the most of each
    store; STW: a store's kg, and the lot it comes in when not one by one. The order of STW is the order of the page's STORES: a release names
    its store as 2 + its place there */
 const LOADS = {
@@ -27,18 +28,23 @@ const LOADS = {
   p47: [1500, { lb500: 2, lb1000: 2 }, { hvar: 10 }, { lb500: 1, ammo50: 1 }],
   f22: [1900, { gbu39: 8, gbu32: 2, mk83: 2 }, { aim120: 6 }, { aim9x: 2 }],
   a10: [3300, { mk82: 6, mk84: 2, cbu87: 4, gbu12: 4 }, { agm65: 6, mk82: 6, cbu87: 4, hydra: 28 }, { aim9: 2, hydra: 14 }],
-  su57: [2300, { kh38: 2, kab500: 2, fab500: 2, fab250: 4 }, { r77: 6 }, { r73: 2 }],
-  su25: [3300, { kh25: 4, kab500: 2, fab500: 4, rbk500: 4 }, { s8: 80, fab250: 4, rbk500: 2 }, { r73: 2 }]
+  su57: [2300, { kh38: 2, kab500: 2, fab500: 2, fab250: 4, kab500kr: 2 }, { r77: 6 }, { r73: 2 }],
+  su25: [3300, { kh25: 4, kab500: 2, fab500: 4, rbk500: 4, kab500kr: 2 }, { s8: 80, fab250: 4, rbk500: 2 }, { r73: 2 }],
+  ah64: [1400, { hydra19: 38, hellfire: 8, hellfirel: 8 }, { hellfire: 8, hellfirel: 8, hydra19: 38 }, { atas: 4 }, { ammo30: 1 }],
+  mi28: [1700, { s8: 40, s13: 10, ataka: 8 }, { ataka: 8, s8: 40 }, { iglav: 4 }],
+  uh60: [1100, { hydra: 14, hydra19: 38 }, { hellfire: 8, atas: 4 }, { ammo762: 1 }],
+  mi8: [1800, { s8: 40, s13: 10 }, { s8: 40, ataka: 4, iglav: 4 }, { ammo762: 1 }]
 };
-const STW = { gbu39: 130, agm65: 300, kh38: 520, kh25: 300, aim120: 160, aim9: 86, r77: 190, r73: 105, s8: [15, 20], mk82: 227, mk83: 450, fab250: 250, fab500: 500, mk84: 925, aim9x: 85, cbu87: 430, rbk500: 500, gbu12: 277, gbu32: 470, kab500: 525, hydra: [14, 7], sc50: 50, sc250: 250, sc500: 500, sc1000: 1000, ab250: 220, wgr21: 110, lb250: 113, lb500: 227, lb1000: 454, hvar: [64, 2], ammo20: 80, ammo50: 80 };
+const STW = { gbu39: 130, agm65: 300, kh38: 520, kh25: 300, aim120: 160, aim9: 86, r77: 190, r73: 105, s8: [15, 20], mk82: 227, mk83: 450, fab250: 250, fab500: 500, mk84: 925, aim9x: 85, cbu87: 430, rbk500: 500, gbu12: 277, gbu32: 470, kab500: 525, hydra: [14, 7], sc50: 50, sc250: 250, sc500: 500, sc1000: 1000, ab250: 220, wgr21: 110, lb250: 113, lb500: 227, lb1000: 454, hvar: [64, 2], ammo20: 80, ammo50: 80, kab500kr: 520, hellfire: [49, 4], hellfirel: [50, 4], ataka: [50, 4], hydra19: [14, 19], s13: [69, 5], atas: [16, 2], iglav: [18, 2], ammo30: 210, ammo762: 40 };
 const NST = Object.keys(STW).length;
 const rooms = { ww2: new Map(), modern: new Map() };
-for (const era in MODELS) { const m = MODELS[era]; rooms[era].host = null; rooms[era].models = m; rooms[era].air = new Set(m.plane); rooms[era].gnd = new Set([...m.tank, ...m.aa, ...m.art, ...m.trn, 'truck']); rooms[era].inf = new Set(m.inf); }
+for (const era in MODELS) { const m = MODELS[era]; rooms[era].host = null; rooms[era].gen = [0, 0]; rooms[era].genk = [0, 0]; rooms[era].gens = new Set(); rooms[era].keep = null; rooms[era].models = m; rooms[era].air = new Set(m.plane); rooms[era].gnd = new Set([...m.tank, ...m.aa, ...m.art, ...m.trn, 'truck']); rooms[era].inf = new Set(m.inf); }
 for (const era in MODELS) for (const id of MODELS[era].heli) rooms[era].air.add(id);
+for (const era in MODELS) rooms[era].specs = new Set();   // spectators: clients with no body, not in the room's map
 let nextId = 1;
 
 const model = (era, cls, id) => typeof cls === 'string' && Object.hasOwn(era, cls) && era[cls].includes(id);
-const side = (era, cls, id) => +(era[cls].indexOf(id) >= era[cls].length / 2);
+const side = (era, cls, id) => +(era[cls].indexOf(id) >= era[cls].length / 2), pside = (era, p) => side(era, p.cls, p.model) ^ (p.cap ? 1 : 0);
 const num = v => typeof v === 'number' && Number.isFinite(v);
 const vec = (v, n) => Array.isArray(v) && v.length === n && v.every(num);
 const pid = v => Number.isInteger(v) && v > 0, aid = v => Number.isInteger(v) && v < 0;
@@ -48,15 +54,18 @@ const ref = v => v === null || pid(v) || aid(v);
 const mid = v => Number.isInteger(v) && v >= 4096 && v < 2 ** 40;
 const launch = (c, m, o) => { if (mid(m.m) && Math.floor(m.m / 4096) === c.player.id) o.m = m.m; if (mid(m.tm)) o.tm = m.tm; return o; };
 const armour = c => c.player.cls === 'tank' || c.player.cls === 'art' || c.player.cls === 'trn';
-/* the damage model's fields: d part states (two bits a part, bit 20 burning), pt the part a hit struck, k the kind of hit */
-const bits = v => Number.isInteger(v) && v >= 0 && v < 1 << 21, part = v => Number.isInteger(v) && v >= 0 && v < 10, kind = v => Number.isInteger(v) && v >= 0 && v < 4;
+/* the damage model's fields: d part states (two bits a part for up to 24 parts, bit 48 burning; from a page that takes this server for an
+   older one, the first ten parts and bit 20), pt the part a hit struck, k the kind of hit, v the parts behind it on the shot's line, w 1 a high-explosive shell that went in, 2 a
+   shaped charge. dcap, sent after welcome, says the server knows them */
+const bits = v => Number.isInteger(v) && v >= 0 && v < 2 ** 49, part = v => Number.isInteger(v) && v >= 0 && v < 24, kind = v => Number.isInteger(v) && v >= 0 && v < 4;
+const via = m => Object.assign({}, Array.isArray(m.v) && m.v.length > 0 && m.v.length <= 3 && m.v.every(part) && { v: m.v }, (m.w === 1 || m.w === 2) && { w: m.w });
 const blow = m => num(m.dmg) && m.dmg > 0 && m.dmg <= 1000 && part(m.pt) && kind(m.k);
 /* world objects: a flat list of pairs, an object's id and its stage (1 damaged, 2 down) or the damage done to it */
 const pairs = (l, ok) => Array.isArray(l) && l.length > 0 && l.length <= 200 && l.length % 2 === 0 && l.every((v, i) => (i % 2 ? ok(v) : Number.isInteger(v) && v >= 0 && v < 65536));
 /* a loadout for that plane, one choice per group, [store, n] or 0, within each group's limits and the plane's weight; anything else is null,
    which is the plane's own load */
 function load(cls, id, lo) {
-  const L = cls === 'plane' && Object.hasOwn(LOADS, id) ? LOADS[id] : null; let w = 0;
+  const L = (cls === 'plane' || cls === 'heli') && Object.hasOwn(LOADS, id) ? LOADS[id] : null; let w = 0;
   if (!L || !Array.isArray(lo) || lo.length !== L.length - 1) return null;
   for (let i = 0; i < lo.length; i++) {
     const c = lo[i], g = L[i + 1];
@@ -76,7 +85,7 @@ const scores = c => cast(c, { t: 'scores', players: [...c.room.values()].map(o =
 const aiEnt = (room, e, k) => Array.isArray(e) && aid(e[0]) && (e[2] === 0 || e[2] === 1) && (k === 2 ? e.length === 9 && e.every(num) && Number.isInteger(e[1]) && e[1] >= 0 && e[1] < room.inf.size && Number.isInteger(e[8]) && e[8] >= 0 && e[8] < 256
   : e.length === (k ? (room.gnd.has(e[1]) ? 14 : 0) : room.air.has(e[1]) ? 16 : 0) && e.every((v, i) => i === 1 || num(v)) && bits(e[e.length - 1]));
 const send = (ws, m) => { if (ws.readyState === 1) ws.send(JSON.stringify(m)); };
-const cast = (c, m, all) => { for (const o of c.room.values()) if (all || o !== c) send(o.ws, m); };
+const cast = (c, m, all) => { for (const o of c.room.values()) if (all || o !== c) send(o.ws, m); for (const o of c.room.specs || []) if (o !== c) sendSpec(o, m); };
 
 /* c→s messages. Every handler but join runs only for a client that is already in a room. */
 const RX = {
@@ -84,26 +93,50 @@ const RX = {
     if (c.room) return;
     const era = typeof m.room === 'string' && Object.hasOwn(MODELS, m.room) ? MODELS[m.room] : null;
     if (!era) return send(c.ws, { t: 'error', code: 'room' });
+    if (m.cls === 'gen') {   // an MCP bridge: no body, not in the roster, never host; one a side, with the server's key
+      const room = rooms[m.room];
+      if (!GENKEY || m.key !== GENKEY) { send(c.ws, { t: 'error', code: 'gen' }); return c.ws.close(); }   // one guess a connection
+      if ((m.side !== 0 && m.side !== 1) || [...room.gens].some(o => o.player.side === m.side)) return send(c.ws, { t: 'error', code: 'taken' });
+      c.player = { id: nextId++, name: 'MCP', cls: 'gen', model: '', side: m.side, kills: 0, deaths: 0, ai: 0 }; c.gen = 1; c.room = room; room.gens.add(c);
+      return send(c.ws, { t: 'welcome', id: c.player.id, host: room.host ? room.host.player.id : 0, side: m.side, eco: 1, gen: 1, gn: room.gen, gk: room.genk, cqn: room.cqn || 0, gc: 2, players: [...room.values()].map(o => o.player) });
+    }
+    if (m.cls === 'spec') {   // a spectator: no body, not in the roster, never host; it is sent everything and can send nothing
+      const room = rooms[m.room];
+      if (!SPEC) return send(c.ws, { t: 'error', code: 'spec' });
+      if (room.specs.size >= SPECMAX) return send(c.ws, { t: 'error', code: 'full' });
+      const mv = int(m.mv, 1, 99) ? m.mv : 1;
+      if (room.size > 0 && mv !== room.mv && !(room.mv === 1 && m.mv1 === 1)) return send(c.ws, { t: 'error', code: 'map' });   // the map-version gate, as for a player
+      const name = (typeof m.name === 'string' ? m.name.replace(/[\x00-\x1f\x7f]/g, '').trim().slice(0, 16).trim() : '') || 'Espectador';
+      c.player = { id: nextId++, name, cls: 'spec', model: '', side: -1, kills: 0, deaths: 0, ai: 0 }; c.spec = 1; c.room = room; room.specs.add(c);
+      send(c.ws, Object.assign({}, room.wf, { t: 'welcome', spec: 1, id: c.player.id, host: room.host ? room.host.player.id : 0, ff: room.ff || 0, mv: room.mv || 1, gn: room.gen, gk: room.genk, cqn: room.cqn || 0, players: [...room.values()].map(o => o.player) }));
+      send(c.ws, { t: 'fcap', v: 1 }); send(c.ws, { t: 'dcap', v: 1 });
+      if (room.host) send(room.host.ws, { t: 'sjoin', id: c.player.id });
+      return;
+    }
     if (!model(era, m.cls, m.model)) return send(c.ws, { t: 'error', code: 'model' });
     const room = rooms[m.room];
     if (room.size >= CAP) return send(c.ws, { t: 'error', code: 'full' });
     const name = (typeof m.name === 'string' ? m.name.replace(/[\x00-\x1f\x7f]/g, '').trim().slice(0, 16).trim() : '') || 'Piloto';
     c.player = { id: nextId++, name, cls: m.cls, model: m.model, lo: load(m.cls, m.model, m.lo), kills: 0, deaths: 0, ai: 0 };
-    c.room = room; room.set(c.player.id, c); if (!room.host) room.host = c;
-    send(c.ws, { t: 'welcome', id: c.player.id, host: room.host.player.id, swap: 1, inf: 1, obj: 1, sup: 1, hl: 1, lo: 1, trn: 1, cmd: 1, crew: 1, players: [...room.values()].map(o => o.player) });
+    const mv = int(m.mv, 1, 99) ? m.mv : 1;   // the map version of the page; the first player's is the room's
+    if (room.size === 0) room.mv = mv;
+    else if (mv !== room.mv && !(room.mv === 1 && m.mv1 === 1)) return send(c.ws, { t: 'error', code: 'map' });
+    c.room = room; room.set(c.player.id, c); if (!room.host) { room.host = c; room.ff = 0; for (const g of room.gens) send(g.ws, { t: 'host', id: c.player.id }); }
+    send(c.ws, room.wf = { t: 'welcome', dr: 1, id: c.player.id, host: room.host.player.id, swap: 1, inf: 1, obj: 1, sup: 1, hl: 1, lo: 1, hlo: 1, trn: 1, cmd: 1, crew: 1, cap: 1, ms: 1, cq: 1, bld: 1, she: 1, civ: 1, eco: 1, gen: 1, gn: room.gen, gk: room.genk, cqn: room.cqn || 0, ff: room.ff || 0, mv: room.mv || 1, gc: 2, players: [...room.values()].map(o => o.player) });
     send(c.ws, { t: 'fcap', v: 1 });   // this server knows fort and fbuild (trenches and sandbags)
+    send(c.ws, { t: 'dcap', v: 1 });   // and the longer damage model
     cast(c, { t: 'joined', player: c.player });
   },
   /* another vehicle in mid-match, of the room's era and of the side the player is on: the record changes in place and the room is told.
      Anything else is refused to the sender alone (no: 1), with the vehicle it keeps. The score and the host are not touched */
   swap(c, m) {
     const era = c.room.models, p = c.player;
-    if (!model(era, m.cls, m.model) || side(era, m.cls, m.model) !== side(era, p.cls, p.model)) return send(c.ws, { t: 'swap', id: p.id, cls: p.cls, model: p.model, no: 1 });
-    p.cls = m.cls; p.model = m.model; p.lo = load(m.cls, m.model, m.lo);
-    cast(c, { t: 'swap', id: p.id, cls: p.cls, model: p.model, lo: p.lo }, true);
+    if (!model(era, m.cls, m.model) || side(era, m.cls, m.model) !== pside(era, p)) return send(c.ws, { t: 'swap', id: p.id, cls: p.cls, model: p.model, no: 1 });
+    p.cls = m.cls; p.model = m.model; p.cap = 0; p.lo = load(m.cls, m.model, m.lo);
+    cast(c, Object.assign({ t: 'swap', id: p.id, cls: p.cls, model: p.model, lo: p.lo }, m.rq === 1 && { rq: 1 }), true);   // rq: a requisition at a depot, no loss
   },
   /* another loadout on the plane the player has: over its airfield, or chosen for the next one. A refused one is the plane's own load */
-  load(c, m) { const p = c.player; if (p.cls !== 'plane') return; p.lo = load(p.cls, p.model, m.lo); cast(c, { t: 'load', id: p.id, lo: p.lo }); },
+  load(c, m) { const p = c.player; if (p.cls !== 'plane' && p.cls !== 'heli') return; p.lo = load(p.cls, p.model, m.lo); cast(c, { t: 'load', id: p.id, lo: p.lo }); },
   state(c, m) {
     if (c.player.cls !== 'plane' || !vec(m.p, 3) || !vec(m.q, 4) || !vec(m.v, 3) || !num(m.thr) || !num(m.hp) || !Number.isInteger(m.f) || !bits(m.d)) return;
     cast(c, { t: 'state', from: c.player.id, p: m.p, q: m.q, v: m.v, thr: m.thr, hp: m.hp, f: m.f & 31, d: m.d });
@@ -118,14 +151,18 @@ const RX = {
     cast(c, { t: 'mstate', from: c.player.id, p: m.p, a: m.a, v: m.v, s: m.s, hp: m.hp, f: m.f & 31 });
   },
   /* what a soldier throws or launches unguided, from p at v: k 0 its rocket, 1 a hand grenade, 2 a smoke grenade, 3 a mortar bomb, 4 a
-     mortar smoke bomb. A guided one goes as ord. shot and aishot: s 1, a howitzer's smoke round.
+     mortar smoke bomb. A guided one goes as ord. shot and aishot: s 1, a howitzer's smoke round; h 1, a tank's high-explosive round (welcome says she: 1).
      cmd: the host's word on what each side's commander is at, for the players' maps: c, per side, [what, then x, z, kind of each mark] */
-  cmd(c, m) { if (host(c) && Array.isArray(m.c) && m.c.length === 2 && m.c.every(l => Array.isArray(l) && l.length <= 100 && l.every(num))) cast(c, { t: 'cmd', c: m.c }); },
+  cmd(c, m) {
+    if (!host(c) || !Array.isArray(m.c) || m.c.length !== 2 || !m.c.every(l => Array.isArray(l) && l.length <= 100 && l.every(num))) return;
+    for (const o of c.room.values()) if (o !== c) send(o.ws, { t: 'cmd', c: sideOf(o) ? [[0], m.c[1]] : [m.c[0], [0]] });   // a side sees its own commander only
+    for (const o of c.room.specs) send(o.ws, { t: 'cmd', c: m.c });   // a spectator sees both
+  },
   toss(c, m) { if (c.player.cls === 'inf' && toss(m)) cast(c, { t: 'toss', from: c.player.id, k: m.k, p: m.p, v: m.v }); },
   aitoss(c, m) { if (host(c) && aid(m.id) && toss(m)) cast(c, { t: 'aitoss', id: m.id, k: m.k, p: m.p, v: m.v }); },
   shot(c, m) {
     if (!armour(c) || !vec(m.p, 3) || !vec(m.v, 3)) return;
-    cast(c, Object.assign({ t: 'shot', from: c.player.id, p: m.p, v: m.v }, m.s === 1 && { s: 1 }));
+    cast(c, Object.assign({ t: 'shot', from: c.player.id, p: m.p, v: m.v }, m.s === 1 && { s: 1 }, m.h === 1 && { h: 1 }));
   },
   ord(c, m) {
     if (!slot(m.i) || !ref(m.target)) return;
@@ -135,15 +172,20 @@ const RX = {
   smoke(c, m) { if (armour(c) && vec(m.p, 3)) cast(c, { t: 'smoke', from: c.player.id, p: m.p }); },
   mkill(c, m) { if (mid(m.id)) cast(c, { t: 'mkill', from: c.player.id, id: m.id }); },
   flare(c) { cast(c, { t: 'flare', from: c.player.id }); },
+  /* what a missile's seeker did, from the client that owns it (ms: 1 in welcome): k 0 lost, 1 decoyed at p, 2 back, 3 where it is, 4 burst */
+  msl(c, m) {
+    if (!mid(m.id) || Math.floor(m.id / 4096) !== c.player.id || !Number.isInteger(m.k) || m.k < 0 || m.k > 4 || ((m.k === 1 || m.k > 2) && !vec(m.p, 3)) || (m.k === 3 && (!vec(m.d, 3) || !num(m.v)))) return;
+    cast(c, Object.assign({ t: 'msl', id: m.id, k: m.k }, m.p && { p: m.p }, m.k === 3 && { d: m.d, v: m.v }));
+  },
   hit(c, m) {
     const o = c.room.get(m.to);
     if (!o || o === c || !blow(m)) return;
-    send(o.ws, { t: 'hit', from: c.player.id, to: m.to, dmg: m.dmg, pt: m.pt, k: m.k, by: host(c) && aid(m.by) ? m.by : null });
+    send(o.ws, Object.assign({ t: 'hit', from: c.player.id, to: m.to, dmg: m.dmg, pt: m.pt, k: m.k, by: host(c) && aid(m.by) ? m.by : null }, via(m)));
   },
   down(c, m) {
     if (!ref(m.by)) return;
     const k = c.room.get(m.by), by = aid(m.by) ? m.by : k && k !== c ? m.by : null;
-    c.player.deaths++; if (k && k !== c) k.player.kills++;
+    c.player.deaths++; if (k && k !== c && pside(c.room.models, k.player) !== pside(c.room.models, c.player)) k.player.kills++;   // a team kill is no one's credit
     cast(c, Object.assign({ t: 'down', id: c.player.id, by, det: m.det === 1 ? 1 : 0 }, m.left === 1 && { left: 1 }), true); scores(c);   // left: the vehicle was abandoned for another
   },
   /* the AI battle: snapshots and events come from the host only, and damage to an AI entity goes to the host only */
@@ -158,7 +200,7 @@ const RX = {
   aismoke(c, m) { if (host(c) && aid(m.id) && vec(m.p, 3)) cast(c, { t: 'aismoke', id: m.id, p: m.p }); },
   aishot(c, m) {
     if (!host(c) || !aid(m.id) || !vec(m.p, 3) || !vec(m.v, 3)) return;
-    cast(c, Object.assign({ t: 'aishot', id: m.id, p: m.p, v: m.v }, m.s === 1 && { s: 1 }));
+    cast(c, Object.assign({ t: 'aishot', id: m.id, p: m.p, v: m.v }, m.s === 1 && { s: 1 }, m.h === 1 && { h: 1 }));
   },
   aiflare(c, m) { if (host(c) && aid(m.id)) cast(c, { t: 'aiflare', id: m.id }); },
   aidown(c, m) {
@@ -170,6 +212,26 @@ const RX = {
   /* the world's objects belong to the host: it alone says what stage they came to (full: 1, all of them, for someone who has just joined),
      and what anyone else's rounds did to them goes to it alone */
   obj(c, m) { if (host(c) && pairs(m.e, v => v === 1 || v === 2)) cast(c, Object.assign({ t: 'obj', e: m.e }, m.full === 1 && { full: 1 })); },
+  /* the buildings are the host's too (bld): e [element, state, ...], f those that came down, m [aid, tenths of a storey, ...] of its soldiers
+     upstairs, s [building, states as text, ...] for someone who has just joined; a guest's hits h [building, element, damage or -1, ...] and
+     bursts b [x, y, z, radius, damage, ...] go to the host alone (bhit) */
+  bld(c, m) {
+    const int = (v, n) => Number.isInteger(v) && v >= 0 && v < n, flat = (l, n, ok) => Array.isArray(l) && l.length > 0 && l.length <= n && l.every(ok), o = { t: 'bld' };
+    if (!host(c)) return;
+    if (m.e !== undefined) { if (!flat(m.e, 200, (v, i) => int(v, i % 2 ? 4 : 1 << 22)) || m.e.length % 2) return; o.e = m.e; }
+    if (m.f !== undefined) { if (!flat(m.f, 200, v => int(v, 65536))) return; o.f = m.f; }
+    if (m.m !== undefined) { if (!flat(m.m, 200, v => int(v, 1 << 22)) || m.m.length % 2) return; o.m = m.m; }
+    if (m.s !== undefined) { if (!flat(m.s, 120, (v, i) => (i % 2 ? typeof v === 'string' && v.length <= 400 && /^[A-Za-z0-9+/]*$/.test(v) : int(v, 65536))) || m.s.length % 2) return; o.s = m.s; }
+    if (m.full === 1) o.full = 1;
+    if (o.e || o.f || o.m || o.s) cast(c, o);
+  },
+  bhit(c, m) {
+    const h = c.room.host, o = { t: 'bhit', from: c.player.id }, ok = (l, n, f) => Array.isArray(l) && l.length > 0 && l.length <= 200 && l.length % n === 0 && l.every(f);
+    if (h === c) return;
+    if (m.h !== undefined) { if (!ok(m.h, 3, (v, i) => (i % 3 === 2 ? v === -1 || (num(v) && v > 0 && v <= 1000) : Number.isInteger(v) && v >= 0 && v < (i % 3 ? 4096 : 65536)))) return; o.h = m.h; }
+    if (m.b !== undefined) { if (!ok(m.b, 5, (v, i) => num(v) && Math.abs(v) < 1e5 && (i % 5 < 3 || (v > 0 && v <= (i % 5 === 3 ? 200 : 2000))))) return; o.b = m.b; }
+    if (o.h || o.b) send(h.ws, o);
+  },
   ohit(c, m) {
     const h = c.room.host;
     if (h !== c && pairs(m.h, v => num(v) && v > 0 && v <= 1000)) send(h.ws, { t: 'ohit', from: c.player.id, h: m.h });
@@ -219,7 +281,7 @@ const RX = {
   aihit(c, m) {
     const h = c.room.host;
     if (h === c || !aid(m.to) || !blow(m)) return;
-    send(h.ws, { t: 'aihit', from: c.player.id, to: m.to, dmg: m.dmg, pt: m.pt, k: m.k });
+    send(h.ws, Object.assign({ t: 'aihit', from: c.player.id, to: m.to, dmg: m.dmg, pt: m.pt, k: m.k }, via(m)));
   }
 };
 /* a flown helicopter: the plane's state plus c the collective and a the gun's [yaw, pitch]; flags as state, and 32 squad aboard, 64 landed.
@@ -243,11 +305,45 @@ RX.lift = (c, m) => {
    (place, hull and turret, hp, part states, rounds of two arms, smoke, material) and x, 1 or 2, when that vehicle was lost, with by, who destroyed it (a vehicle its crew got out of counts as an AI
    kill, and the soldier's death, if it comes, is a down like any other); to trn, v,
    the AI entity it took. drive: a soldier asks the host for seat s of the parked AI vehicle v. grant: the host's yes, to that soldier alone */
+/* conquest: the match is the host's. cq: n the match number, ph 0 play 1 over, T s left, k and k0 the tickets, len the preset, p four
+   numbers a point (side or -1, progress in hundredths, the weights in tenths), l the losses, r [winner or -1, why] and w s to the next
+   match once it is over. A new n is a new match: the room's scores start again. welcome says cq: 1 and cqn, the match the room is in.
+   req: a soldier asks the host for a vehicle at the depot it stands in; reqa: the host's answer to it alone, why '' for yes */
+const int = (v, lo, hi) => Number.isInteger(v) && v >= lo && v <= hi;
+/* friendly fire is the room's rule, the host's to set (ff 0 or 1); welcome says what it is, and a room without a host that said so has none */
+RX.ff = (c, m) => { if (!host(c) || (m.v !== 0 && m.v !== 1)) return; c.room.ff = m.v; cast(c, { t: 'ff', v: m.v }); };
+RX.cq = (c, m) => {
+  const room = c.room;
+  if (!host(c) || !int(m.n, 0, 1e6) || (m.ph !== 0 && m.ph !== 1) || !num(m.T) || !vec(m.k, 2) || !num(m.k0) || !int(m.len, 0, 2) || !Array.isArray(m.p) || m.p.length > 64 || m.p.length % 4 || !m.p.every(v => int(v, -1000, 1000)) || !vec(m.l, 6)) return;
+  const o = { t: 'cq', n: m.n, ph: m.ph, T: m.T, k: m.k, k0: m.k0, len: m.len, p: m.p, l: m.l };
+  if (m.ph === 1 && vec(m.r, 2) && int(m.r[0], -1, 1) && int(m.r[1], 0, 3)) { o.r = m.r; o.w = num(m.w) ? m.w : 0; }
+  if (m.n !== (room.cqn || 0)) { room.cqn = m.n; room.keep = null; for (const q of room.values()) q.player.kills = q.player.deaths = q.player.ai = 0; scores(c); }
+  cast(c, o);
+};
+RX.req = (c, m) => {
+  const h = c.room.host, era = c.room.models, p = c.player, now = Date.now();
+  if (h === c || p.cls !== 'inf' || !model(era, m.cls, m.model) || m.cls === 'inf' || side(era, m.cls, m.model) !== side(era, p.cls, p.model) || now - (c.rt || 0) < 500) return;
+  c.rt = now; send(h.ws, { t: 'req', from: p.id, cls: m.cls, model: m.model });
+};
+RX.reqa = (c, m) => {
+  const o = c.room.get(m.to);
+  if (host(c) && o && o !== c && model(c.room.models, m.cls, m.model) && typeof m.why === 'string' && m.why.length <= 12) send(o.ws, { t: 'reqa', cls: m.cls, model: m.model, why: m.why });
+};
+/* radios, places where infantry enters: rad, the host's list, a row each [id, kind 0 operator 1 set down 2 vehicle, side, x, z, entries
+   left, why not]; rsp: a guest entered by radio id, to the host; rbe: a guest's operator set its radio down or took it up (k 1), or its
+   radio vehicle raised or lowered the mast (k 2), to the host */
+RX.rad = (c, m) => { if (host(c) && Array.isArray(m.e) && m.e.length <= 24 && m.e.every(e => vec(e, 7) && int(e[0], 1, 1e6) && int(e[1], 0, 2) && int(e[2], 0, 1) && int(e[5], -1, 99) && int(e[6], 0, 5))) cast(c, { t: 'rad', e: m.e }); };
+RX.rsp = (c, m) => { const h = c.room.host; if (h !== c && c.player.cls === 'inf' && int(m.id, 1, 1e6)) send(h.ws, { t: 'rsp', from: c.player.id, id: m.id }); };
+RX.rbe = (c, m) => { const h = c.room.host, k = c.player.cls; if (h !== c && ((m.k === 1 && k === 'inf') || (m.k === 2 && k === 'trn')) && (m.on === 0 || m.on === 1)) send(h.ws, { t: 'rbe', from: c.player.id, k: m.k, on: m.on }); };
 const two = cls => cls === 'inf' || cls === 'trn', vst = v => vec(v, 12) && bits(v[7]);
+/* capture (welcome says cap: 1): crew to trn with cap 1 names a transport of the other side, taken from it; the record carries cap while
+   the player sits in one, and its side is still its own (pside) */
 RX.crew = (c, m) => {
-  const era = c.room.models, p = c.player;
-  if (!two(p.cls) || !two(m.cls) || !model(era, m.cls, m.model) || side(era, m.cls, m.model) !== side(era, p.cls, p.model)) return;
+  const era = c.room.models, p = c.player, cap = m.cls === 'trn' && m.cap === 1 ? 1 : 0;
+  if (!two(p.cls) || !two(m.cls) || !model(era, m.cls, m.model) || (side(era, m.cls, m.model) ^ cap) !== pside(era, p)) return;
   const o = { t: 'crew', id: p.id, cls: m.cls, model: m.model };
+  if (cap) o.cap = 1;
+  p.cap = cap;
   const k = c.room.get(m.by), lost = m.cls === 'inf' && vst(m.st) && (m.x === 1 || m.x === 2);
   if (m.cls === 'inf' && vst(m.st)) o.st = m.st;
   if (lost) { o.x = m.x; o.by = aid(m.by) ? m.by : k && k !== c ? m.by : null; }
@@ -266,6 +362,127 @@ RX.grant = (c, m) => {
   send(o.ws, { t: 'grant', v: m.v, s: m.s, st: m.st, o: m.o });
 };
 
+/* drones: the operator kits, and three messages. welcome says dr: 1.
+   dstate: a player's drone, i its slot (0 the quadcopter, 1 the long-range one), k its type, p q v as a plane's state, f flags (1 armed,
+   2 gone, 4 shot down or crashed, 8 detonated). dai: the host's AI drones, a row each, [id, type, side, then p q v f]. dhit: damage to a
+   drone goes to its owner alone, a player (to, i) or the host (to negative) */
+{
+  const m = MODELS.modern.inf, kits = ['blueDrone', 'redDrone'];
+  if (m.includes(kits[0])) throw new Error('drone kits already there');
+  m.splice(m.length / 2, 0, kits[0]); m.push(kits[1]); for (const k of kits) rooms.modern.inf.add(k);
+  const dk = v => Number.isInteger(v) && v >= 0 && v < 8, sl = v => v === 0 || v === 1;
+  RX.dstate = (c, m) => {
+    if (c.player.cls !== 'inf' || !kits.includes(c.player.model) || !sl(m.i) || !dk(m.k) || !vec(m.p, 3) || !vec(m.q, 4) || !vec(m.v, 3) || !Number.isInteger(m.f)) return;
+    cast(c, { t: 'dstate', from: c.player.id, i: m.i, k: m.k, p: m.p, q: m.q, v: m.v, f: m.f & 15 });
+  };
+  RX.dai = (c, m) => { if (host(c) && Array.isArray(m.e) && m.e.length <= 16 && m.e.every(e => vec(e, 14) && aid(e[0]) && dk(e[1]) && (e[2] === 0 || e[2] === 1))) cast(c, { t: 'dai', e: m.e }); };
+  RX.dhit = (c, m) => {
+    if (!num(m.dmg) || m.dmg <= 0 || m.dmg > 1000) return;
+    if (aid(m.to)) { const h = c.room.host; if (h !== c) send(h.ws, { t: 'dhit', from: c.player.id, to: m.to, dmg: m.dmg }); return; }
+    const o = c.room.get(m.to);
+    if (o && o !== c && sl(m.i)) send(o.ws, { t: 'dhit', from: c.player.id, to: m.to, i: m.i, dmg: m.dmg });
+  };
+}
+/* civilians in the towns (welcome says civ: 1). civ: the host's word on them, to the room: k 0 rows of [id, x, z, heading, flags, colour], k 1 the militia as
+   triples [aid, colour, owner]. civhit and civrec go to the host alone: a guest's own hits on civilians, pairs of id and damage, and a request to recruit one */
+{
+  const row = e => vec(e, 6) && Number.isInteger(e[0]) && e[0] >= 0 && e[0] < 65536 && Number.isInteger(e[4]) && e[4] >= 0 && e[4] < 32 && Number.isInteger(e[5]) && e[5] >= 0 && e[5] < 32;
+  RX.civ = (c, m) => {
+    if (!host(c) || !Array.isArray(m.e)) return;
+    if (m.k === 0 && m.e.length <= 40 && m.e.every(row)) cast(c, { t: 'civ', k: 0, e: m.e });
+    else if (m.k === 1 && m.e.length <= 90 && m.e.length % 3 === 0 && m.e.every((v, i) => (i % 3 ? Number.isInteger(v) && v >= 0 && v < 1e6 : aid(v)))) cast(c, { t: 'civ', k: 1, e: m.e });
+  };
+  RX.civhit = (c, m) => {
+    const h = c.room.host;
+    if (h && h !== c && Array.isArray(m.h) && m.h.length > 0 && m.h.length <= 40 && m.h.length % 2 === 0 && m.h.every((v, i) => (i % 2 ? num(v) && v > 0 && v <= 200 : Number.isInteger(v) && v >= 0 && v < 65536))) send(h.ws, { t: 'civhit', from: c.player.id, h: m.h });
+  };
+  RX.civrec = (c, m) => { const h = c.room.host; if (h && h !== c && c.player.cls === 'inf' && Number.isInteger(m.id) && m.id >= 0 && m.id < 65536) send(h.ws, { t: 'civrec', from: c.player.id, id: m.id }); };
+}
+/* the economy and the general (welcome eco: 1, gen: 1). A side's private word (ecs, gen, glog) goes to that side's players and its MCP
+   bridge only; eco rows (the sites, world objects) to everyone like base; keep, the host's sealed backup, to the server alone, which hands
+   it to the next host. The server says who commands a side (gclaim, gctl: first to claim, free again when it leaves); gcmd from that
+   general and gask from anyone of the side go to the host, its gres to the asker alone */
+/* spectators (welcome spec: 1 to the spectator): SPEC=0 off, SPEC=1 on and live (the default). A spectator's every message is dropped. */
+const SPEC = process.env.SPEC === undefined ? 1 : Math.max(0, +process.env.SPEC || 0), SPECMAX = 8, sendSpec = (o, m) => send(o.ws, m);
+const GENKEY = process.env.GENKEY || '', GENRX = new Set(['gclaim', 'gcmd', 'gask']);
+const BIG = { ai: MAXAI, gen: 8192, glog: MAXAI, keep: MAXAI, gres: MAXAI };
+const sideOf = o => (o.spec ? -1 : o.gen ? o.player.side : pside(o.room.models, o.player)), sd = v => v === 0 || v === 1;
+const ints = (l, n, k) => Array.isArray(l) && l.length <= n && l.length % k === 0 && l.every(v => Number.isInteger(v) && Math.abs(v) < 1e6);
+const txt = (v, n) => typeof v === 'string' && v.length <= n, rec = v => v === null || (typeof v === 'object' && !Array.isArray(v)), lst = (v, n) => Array.isArray(v) && v.length <= n;
+const members = room => [...room.values(), ...room.gens, ...room.specs];
+const castSide = (c, m, s, to) => { for (const o of members(c.room)) if (o !== c && (sideOf(o) === s || o.spec) && (!to || o.player.id === to)) send(o.ws, m); };   // a spectator is sent both sides
+const gctl = room => { for (const o of members(room)) send(o.ws, { t: 'gctl', g: room.gen, k: room.genk }); };
+const genFree = (room, c) => { let ch = false; for (const s of [0, 1]) if (room.gen[s] === c.player.id) { room.gen[s] = room.genk[s] = 0; ch = true; } if (ch) gctl(room); };
+RX.eco = (c, m) => {
+  const row = e => Array.isArray(e) && (e.length === 9 || (e.length === 10 && int(e[9], 0, 255))) && e.every(num) && int(e[0], 0, 65535) && sd(e[1]) && int(e[2], 0, 7) && e[6] >= 0 && e[6] <= 100 && int(e[8], 0, 2);
+  if (host(c) && lst(m.e, 48) && m.e.every(row)) { const o = { t: 'eco', e: m.e }; cast(c, o); for (const g of c.room.gens) send(g.ws, o); }   // the bridges too: the sites are everyone's
+};
+RX.ecs = (c, m) => {
+  if (!host(c) || !sd(m.s) || !num(m.T) || !vec(m.v, 8) || !int(m.c, 0, 2) || !ints(m.q, 60, 5) || ![m.r, m.kp, m.ms, m.ls].every(l => ints(l, 40, 2)) || !ints(m.sl, 40, 4)
+    || !ints(m.kn, 144, 6) || !ints(m.gd, 72, 3) || !(Array.isArray(m.sc) && (m.sc.length === 0 || vec(m.sc, 3))) || !int(m.tg, 0, 1e6)) return;
+  castSide(c, { t: 'ecs', s: m.s, T: m.T, v: m.v, c: m.c, q: m.q, r: m.r, kp: m.kp, ms: m.ms, ls: m.ls, sl: m.sl, kn: m.kn, gd: m.gd, sc: m.sc, tg: m.tg }, m.s);
+};
+/* the commander's view of side s: top-level fields checked, their insides are the host's (it is trusted with the whole battle) */
+RX.gen = (c, m) => {
+  const v = m.v;
+  if (!host(c) || !sd(m.s) || !num(m.T) || !v || !rec(v) || !ints(m.q, 192, 6)) return;
+  const o = { doc: txt(v.doc, 24) ? v.doc : '', post: rec(v.post) && v.post && txt(v.post.k, 40) && txt(v.post.s, 240) ? { k: v.post.k, s: v.post.s } : null,
+    road: lst(v.road, 8) ? v.road : null, ops: lst(v.ops, 16) ? v.ops : [], fm: lst(v.fm, 40) ? v.fm : [], sc: lst(v.sc, 8) ? v.sc : [],
+    hit: rec(v.hit) ? v.hit : null, focus: rec(v.focus) ? v.focus : null, thr: rec(v.thr) ? v.thr : null, want: rec(v.want) ? v.want : null,
+    gate: txt(v.gate, 8) ? v.gate : '', atkT: num(v.atkT) ? v.atkT : 0, ev: lst(v.ev, 8) ? v.ev : [], evT: num(v.evT) ? v.evT : -1,
+    fb: lst(v.fb, 8) ? v.fb : null, res: rec(v.res) ? v.res : null, mev: lst(v.mev, 9) ? v.mev : [], gue: rec(v.gue) ? v.gue : null, kz: rec(v.kz) || lst(v.kz, 96) ? v.kz : null };
+  castSide(c, { t: 'gen', s: m.s, T: m.T, v: o, q: m.q }, m.s);
+};
+RX.glog = (c, m) => {
+  const opt = v => v === null || num(v), row = r => Array.isArray(r) && r.length === 7 && num(r[0]) && typeof r[1] === 'string' && /^[a-z]{1,6}$/.test(r[1]) && txt(r[2], 240) && r.slice(3).every(opt);
+  if (!host(c) || !sd(m.s) || !num(m.T) || !lst(m.e, 80) || !m.e.every(row) || (m.to !== undefined && !pid(m.to))) return;
+  castSide(c, Object.assign({ t: 'glog', s: m.s, T: m.T, e: m.e }, m.full === 1 && { full: 1 }), m.s, m.to);
+};
+RX.keep = (c, m) => { if (host(c) && m.e && rec(m.e)) c.room.keep = m.e; };
+RX.gclaim = (c, m) => {
+  const room = c.room, s = sideOf(c), id = c.player.id, held = room.gen[s], now = Date.now();
+  if ((m.on !== 0 && m.on !== 1) || now - (c.gl || 0) < 1000) return;
+  c.gl = now;
+  if (m.on && (!held || !members(room).some(o => o.player.id === held))) { room.gen[s] = id; room.genk[s] = c.gen ? 2 : 1; }
+  else if (!m.on && held === id) room.gen[s] = room.genk[s] = 0;
+  else return send(c.ws, { t: 'gctl', g: room.gen, k: room.genk });   // refused: the sender is told who holds it
+  gctl(room);
+};
+const GK = { k: 'w', k2: 'w', x: 'n', z: 'n', a: 'n', n: 'i', id: 'i', p: 'i', inf: 'i', aa: 'i', ri: 'i', op: 'i', why: 's',
+  ids: 'L', j: 'i', pi: 'i', sd: 'i', smk: 'i', home: 'i', s: 'n', fx: 'n', fz: 'n', x2: 'n', z2: 'n', H: 'n', r: 'n' };
+function gcmdOf(c) {
+  if (!c || !rec(c) || typeof c.c !== 'string' || !/^[a-z]{2,8}$/.test(c.c) || c.c === 'draw') return null;
+  const o = { c: c.c };
+  for (const k of Object.keys(c)) {
+    if (k === 'c') continue;
+    const t = GK[k], v = c[k];
+    if (!Object.hasOwn(GK, k) || !(t === 'L' ? Array.isArray(v) && v.length <= 24 && v.every(e => Number.isInteger(e) && Math.abs(e) < 1e6) : t === 'w' ? typeof v === 'string' && /^[a-z0-9]{1,10}$/.test(v) : t === 'n' ? num(v) && Math.abs(v) < 1e5 : t === 'i' ? Number.isInteger(v) && Math.abs(v) < 1e6 : txt(v, 120))) return null;
+    o[k] = t === 'L' ? v.slice() : t === 's' ? v.replace(/[\x00-\x1f\x7f]/g, '').slice(0, 80) : v;
+  }
+  return o;
+}
+RX.gcmd = (c, m) => {
+  const room = c.room, s = sideOf(c), h = room.host, n = int(m.n, 0, 1e9) ? m.n : 0, now = Date.now(), no = why => send(c.ws, { t: 'gres', n, ok: false, why, id: 0 });
+  if (room.gen[s] !== c.player.id) return no('ctl');
+  if (now - (c.gt || 0) < 250) return no('rate');
+  c.gt = now;
+  const o = (m.d === 'eco' || m.d === 'cmd') && gcmdOf(m.c);
+  if (!o) return no('shape');
+  if (!h) return no('host');
+  if (h !== c) send(h.ws, { t: 'gcmd', from: c.player.id, s, g: c.gen ? 1 : 0, d: m.d, c: o, n });   // the host applies its own player's commands itself
+};
+RX.gask = (c, m) => {
+  const h = c.room.host, q = m.q, n = int(m.n, 0, 1e9) ? m.n : 0, now = Date.now();
+  if (!q || !rec(q) || !['spots', 'why', 'view', 'state', 'pool', 'amb', 'fire'].includes(q.q) || now - (c.ga || 0) < 1000) return send(c.ws, { t: 'gres', n, ok: false, why: 'shape', id: 0 });
+  c.ga = now;
+  const o = { q: q.q }; if (typeof q.k === 'string' && /^[a-z0-9]{1,10}$/.test(q.k)) o.k = q.k; for (const k of ['x', 'z', 'a']) if (num(q[k]) && Math.abs(q[k]) < 1e5) o[k] = q[k];
+  if (!h) return send(c.ws, { t: 'gres', n, ok: false, why: 'host', id: 0 });
+  if (h !== c) send(h.ws, { t: 'gask', from: c.player.id, s: sideOf(c), q: o, n });
+};
+RX.gres = (c, m) => {
+  const o = host(c) && pid(m.to) && members(c.room).find(o => o.player.id === m.to);
+  if (o && o !== c && int(m.n, 0, 1e9) && typeof m.ok === 'boolean' && txt(m.why, 12) && Number.isInteger(m.id)) send(o.ws, Object.assign({ t: 'gres', n: m.n, ok: m.ok, why: m.why, id: m.id }, m.r !== undefined && (rec(m.r) || Array.isArray(m.r)) && { r: m.r }));
+};
 const server = http.createServer((req, res) => {
   if (req.method !== 'GET' || req.url.split('?')[0] !== '/') { res.writeHead(404, { 'content-type': 'text/plain; charset=utf-8' }); return res.end('404'); }
   fs.readFile(PAGE, (err, buf) => {
@@ -283,17 +500,25 @@ wss.on('connection', ws => {
   ws.on('message', (data, binary) => {
     if (binary || data.length > MAXAI) return;
     let m; try { m = JSON.parse(data); } catch (e) { return; }
-    if (!m || typeof m !== 'object' || typeof m.t !== 'string' || !Object.hasOwn(RX, m.t) || (m.t !== 'ai' && data.length > MAXLEN)) return;
+    if (!m || typeof m !== 'object' || typeof m.t !== 'string' || !Object.hasOwn(RX, m.t) || data.length > (Object.hasOwn(BIG, m.t) ? BIG[m.t] : MAXLEN)) return;
     if (m.t !== 'join' && !c.room) return;
+    if (c.spec) return;   // a spectator sends nothing the room or the host reads
+    if (c.gen && !GENRX.has(m.t)) return;
     RX[m.t](c, m);
   });
   ws.on('close', () => {
     if (!c.room) return;
     const room = c.room;
-    room.delete(c.player.id); cast(c, { t: 'left', id: c.player.id });
+    if (c.spec) { room.specs.delete(c); return; }
+    if (c.gen) { room.gens.delete(c); return genFree(room, c); }
+    room.delete(c.player.id); cast(c, { t: 'left', id: c.player.id }); genFree(room, c);
+    if (!room.size) room.keep = null;
+    if (room.size === 0) room.mv = 0;
     if (room.host !== c) return;
     room.host = room.values().next().value || null;
-    if (room.host) cast(c, { t: 'host', id: room.host.player.id });
+    if (room.host) { if (room.keep) send(room.host.ws, { t: 'keep', e: room.keep }); cast(c, { t: 'host', id: room.host.player.id }); }   // the backup first: the page adopts on host
+    for (const g of room.gens) send(g.ws, { t: 'host', id: room.host ? room.host.player.id : 0 });
+    if (!room.host) for (const o of room.specs) send(o.ws, { t: 'host', id: 0 });   // nobody left to play: the spectators are told
   });
 });
 const beat = setInterval(() => {

@@ -1,7 +1,7 @@
 'use strict';
 /* the relay server and the sappers, the rocket launchers and the posts: welcome sap 1, the sapper kits and the launchers on their sides,
    mine from the host (each player sees its side's mines and the ones its side knows, a spectator all), mboom to the room, mreq from a
-   soldier to the host alone, and fort and fbuild with the kinds of the posts */
+   soldier to the host alone, dint from the host's dome to the room, fort and fbuild with the kinds of the posts, and the mines kept for the next host */
 const N = require('./net'), { ok, done } = require('./harness');
 (async () => {
   await N.start(); console.log('server: ' + N.SERVER);
@@ -52,6 +52,11 @@ const N = require('./net'), { ok, done } = require('./harness');
   await N.sleep(720); a.send({ t: 'fbuild', k: 6, p: [1, 2], a: 0 }); const fb = await h.wait('fbuild'); ok(fb && fb.k === 6, 'fbuild asks for one');
   await N.sleep(720); a.send({ t: 'fbuild', k: 7, p: [1, 2], a: 0 }); ok(await none(h, 'fbuild'), 'not for a kind that is none');
 
+  h.send({ t: 'dint', f: 55106, k: 4000000000, s: 1 }); const da = await a.wait('dint'), db = await b.wait('dint'), ds = await sp.wait('dint');
+  ok(da && db && ds && da.f === 55106 && da.k === 4000000000 && da.s === 1 && await none(h, 'dint'), 'dint (the host\'s dome engaged a round) reaches the room and the spectator');
+  a.send({ t: 'dint', f: 55106, k: 1, s: 0 }); ok(await none(b, 'dint'), 'dint from a guest is dropped');
+  for (const m of [{ f: 55106, k: 1, s: 2 }, { f: -1, k: 1, s: 0 }, { f: 55106, k: 2 ** 32, s: 0 }, { f: 55106, k: 1.5, s: 0 }, { k: 1, s: 0 }]) h.send(Object.assign({ t: 'dint' }, m));
+  ok(await none(a, 'dint'), 'malformed dint is dropped: a result that is none, a dome or a key out of range');
   /* the host leaves: the server hands its last whole list, every side's mines with the hidden ones and its last id, to the next host alone */
   h.send({ t: 'mine', q: 20, i: 0, n: 2, e: [own0, own1], s: 77 }); h.send({ t: 'mine', q: 20, i: 1, n: 2, e: [known, both], s: 77 });
   h.send({ t: 'mine', q: 21, i: 0, n: 2, e: [own0], s: 78 });

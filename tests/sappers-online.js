@@ -74,6 +74,24 @@ const tap = async (c, k) => { c.S.input[k] = true; await run(.06); c.S.input[k] 
   const gm = f.gm, onG = g1.S.forts.find(q => q.id === f.id), gun = onG && onG.gm;
   console.log('   the nest\'s gunner: ' + (gm ? gm.def.name + ' (' + gm.aid + ')' : 'nobody') + ' on the host; on a guest ' + (gun ? gun.def.name + ' (' + gun.aid + ') with ' + gun.arms[0].d.name : 'nobody'));
   ok(seen && gm && gun && gun.aid === gm.aid && gun.arms[0].d.name === gm.arms[0].d.name && gun.arms[0].d.lmg, 'a post built on the host is on every guest, its garrison at it and the same soldier at its gun');
+  /* a BM-21 salvo of 40 at a dome built on the host, each round reaching the guest 150 to 250 ms after the host as over the wire: the host
+     alone engages and rolls, and the guest stops the very same rounds */
+  const POSTS = host.$('POSTS'); let dome = null;
+  for (const [dx, dz] of [[-200, 300], [-300, 400], [-100, 500], [-400, 250], [-250, -400]]) if (!dome) dome = host.fortStart(6, 0, p.x + dx, p.z + dz, 0);
+  if (dome) host.fortAt(dome, 1);
+  const built = !!dome && await until(() => g1.S.forts.some(q => q.id === dome.id && q.prog >= 1), 8000);
+  const sg = p.x + 6000 < host.S.W - 200 ? 1 : -1, lx = dome.x + sg * 6000, ly = host.hgt(lx, dome.z) + 4, R = n => Math.round(n * 10) / 10;
+  const bm = host.addUnit('art', 1, lx, dome.z, 'bm21', true); bm.ai = null;
+  const stub = { team: 1, x: lx, y: ly, z: dome.z }, w = bm.arms[0].d, HL = [], GL = [];
+  for (let i = 0; i < 40; i++) {
+    const a = [R(lx), R(ly), R(dome.z), R(-sg * 6000 / 52 + (i % 7) * .3 - 1), 255, R((i % 5 - 2) * .3)];
+    HL.push(host.lob(bm, w, ...a)); await run(.15 + (i % 3) * .05); GL.push(g1.lob(stub, w, ...a)); await run(.35 - (i % 3) * .05);
+  }
+  await run(40);
+  const stopped = (c, b) => b.dj && b.gone && b.y - c.hgt(b.x, b.z) > POSTS.dome.low / 2, set = (c, L) => L.map((b, i) => (stopped(c, b) ? i : -1)).filter(i => i >= 0).join();
+  const hs = set(host, HL), gs = set(g1, GL), n = hs ? hs.split(',').length : 0;
+  console.log('   the dome stopped ' + n + ' of 40 on the host (' + dome.ds + ' engaged); the guest stopped [' + gs + '], the host [' + hs + ']');
+  ok(built && n >= 10 && n < 40 && gs === hs, 'a BM-21 salvo of 40 at a dome with a magazine of ' + POSTS.dome.mag + ': it is saturated, and the guest stops the very same rounds the host does');
   /* the host leaves: the next one (g1, side 0) keeps the other side's mine it was never told of, sends it on to that side, and gives out no id used before */
   const hid = host.$('mineLay')(0, 1, p.x + 40, p.z - 60), used = Math.max(m0.id, ap.id, hid ? hid.id : 0), has = (c, o) => !!o && (c.S.mines || []).some(q => q.id === o.id && !q.gone);
   const sent = await until(() => has(g2, hid) && has(g3, hid));

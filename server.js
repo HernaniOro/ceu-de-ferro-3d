@@ -490,7 +490,8 @@ RX.gres = (c, m) => {
    each, [id, kind (0 AT, 1 AP), side, x, z, known (bit s: side s knows it)]; each player is passed only the rows of its side's mines and of
    those its side knows, a spectator all of them. The server keeps the host's last whole list, and s its last mine id, and hands them to
    the next host alone, before it is named, so that no side's hidden mines are lost with the old host. mboom: the host says mine id (kind k, side s) went off at p, to the room. mreq: a soldier
-   to the host, k 0 or 1 lay one at p, 2 lift id, 3 its own body or vehicle set id off; 300 ms apart at least */
+   to the host, k 0 or 1 lay one at p, 2 lift id, 3 its own body or vehicle set id off; 300 ms apart at least. dint: the host says its
+   anti-rocket dome f engaged the round of key k (drawn from its launch numbers) and stopped it (s 1) or not, to the room */
 {
   const kits = { ww2: ['pionier', 'engineer'], modern: ['blueEng', 'redEng'] };
   for (const era in kits) {
@@ -510,6 +511,7 @@ RX.gres = (c, m) => {
       send(o.ws, { t: 'mine', q: m.q, i: m.i, n: m.n, e });
     }
   };
+  RX.dint = (c, m) => { if (host(c) && Number.isInteger(m.f) && m.f >= 0 && m.f < 65536 && Number.isInteger(m.k) && m.k >= 0 && m.k < 4294967296 && (m.s === 0 || m.s === 1)) cast(c, { t: 'dint', f: m.f, k: m.k, s: m.s }); };
   RX.mboom = (c, m) => { if (host(c) && Number.isInteger(m.id) && m.id > 0 && m.id < 65536 && (m.k === 0 || m.k === 1) && (m.s === 0 || m.s === 1) && vec(m.p, 2)) cast(c, { t: 'mboom', id: m.id, k: m.k, s: m.s, p: m.p }); };
   RX.mreq = (c, m) => {
     const h = c.room.host, now = Date.now(), lay = (m.k === 0 || m.k === 1) && vec(m.p, 2), id = (m.k === 2 || m.k === 3) && Number.isInteger(m.id) && m.id > 0 && m.id < 65536;

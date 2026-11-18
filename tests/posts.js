@@ -2,7 +2,7 @@
 /* Posts, the anti-rocket dome and the rocket launchers: the kinds of work and where each may stand (the dome only in its era, the cost
    paid from the economy), the garrison a finished post gets (even at the population cap), the crew-served weapon handed to who mans it
    and back, the player first, the tower that lifts a soldier, an AI gunner at work, the dome against a salvo (what it stops, its
-   magazine, the metal it costs, the same rounds stopped on two clients, the shooter shown), and each launcher's salvo and reload */
+   magazine, the metal it costs, nothing engaged by a guest on its own, the shooter shown), and each launcher's salvo and reload */
 const H = require('./harness'), ok = H.ok;
 const C = H.load({ seed: 31 }), $ = C.$, POSTS = $('POSTS'), FORT = $('FORT'), ARTS = $('ARTS'), ERAS = $('ERAS'), SARMS = $('SARMS'), IAI = $('IAI'), MAN = $('MAN'), STANCE = $('STANCE');
 const hd = $('hdist');
@@ -98,10 +98,6 @@ function salvo(c, S, p, n) {
   console.log('   a salvo of ' + L.length + ' rockets at a dome (' + fell + ' come down within ' + POSTS.dome.r + ' m): it fired ' + D.ds + ' interceptors and stopped ' + D.dk + '; magazine ' + POSTS.dome.mag + ', ' + D.dm + ' left');
   ok(D.dk >= 10 && D.dk < fell && D.ds <= POSTS.dome.mag + 12, 'the dome stops part of the salvo: its magazine of ' + POSTS.dome.mag + ' and its rate are overwhelmed by ' + L.length + ' rockets');
   ok(u.seenT > seen0, 'its radar shows its side the launcher that fired');
-  const C2 = H.load({ seed: 999 }), S2 = fresh('modern', C2), p2 = flat(3, C2), D2 = build(6, 0, p2.x, p2.z, 0, C2), r2 = salvo(C2, S2, p2, 40); C2.run(60, null, 1 / 47);
-  const stopped = (c, b) => b.dj && b.gone && b.y - c.hgt(b.x, b.z) > POSTS.dome.low / 2, both = L.map((b, i) => i).filter(i => L[i].dj && r2.L[i].dj);
-  console.log('   another client stepping at 47 Hz instead of 60 engages ' + D2.ds + ' rounds, ' + both.length + ' of them the same as here');
-  ok(both.length >= 10 && both.every(i => stopped(C, L[i]) === stopped(C2, r2.L[i])), 'another client, with other dice and another frame rate, stops every round both engage alike, or lets it through alike');
   const own = salvo(C, S, p, 1).L[0]; own.team = 0; C.run(60); ok(!own.dj, 'it lets its own side\'s rounds through');
 }
 {
@@ -110,10 +106,9 @@ function salvo(c, S, p, n) {
   const r = salvo(E, S3, p, 10); E.run(60);
   ok(D.ds === 3 && d.mt < POSTS.dome.mt, 'every interceptor costs ' + POSTS.dome.mt + ' metal; with none left the dome is silent (' + D.ds + ' shots at 10 rounds with metal for 3)');
   const G = H.load({ seed: 7, eco: true }), S4 = ecoState(G, 'modern'); S = S4; T = S4.T;
-  const p4 = flat(3, G), d4 = S4.eco.d[0], D4 = build(6, 0, p4.x, p4.z, 0, G); S4.net = true; S4.host = false; d4.mt = POSTS.dome.mt - 1;
-  salvo(G, S4, p4, 10); G.run(60);
-  const ds0 = D4.ds || 0; d4.mt = 1000; salvo(G, S4, p4, 10); G.run(60);
-  ok(!ds0 && D4.ds > 0 && d4.mt === 1000, 'on a guest the dome goes by its side\'s metal as the host told it: short of it, silent there too; with it, it fires and spends none (' + D4.ds + ' shots)');
+  const p4 = flat(3, G), d4 = S4.eco.d[0], D4 = build(6, 0, p4.x, p4.z, 0, G); S4.net = true; S4.host = false; d4.mt = 1000;
+  const g4 = salvo(G, S4, p4, 10); G.run(60);
+  ok(!D4.ds && d4.mt === 1000 && g4.L.every(b => !b.dj), 'on a guest the dome engages nothing of its own, whatever its side\'s metal: the host alone decides (dint)');
 }
 
 console.log('-- the rocket launchers --');

@@ -565,13 +565,14 @@ function snapIn(c, m) {
   }
 }
 /* the copy, to the one who resumes, in the order a joiner gets the host's word; its side's private word only */
+function cat(it) { const o = []; for (const a of it) for (const x of a) o.push(x); return o; }
 function snapOut(c) {
   const room = c.room, P = room.snap, s = sideOf(c), to = m => send(c.ws, m), flat = (t, k, l, o) => { for (let i = 0; i < l.length; i += 200) to(Object.assign({ t, [k]: l.slice(i, i + 200) }, o)); };
   if (P.base) to(P.base);
   for (const m of P.fort) if (m) to(m);
-  flat('obj', 'e', [].concat(...[...P.obj].filter(e => e[1])), { full: 1 });
-  const bs = [].concat(...P.bs); for (let i = 0; i < bs.length; i += 120) to({ t: 'bld', s: bs.slice(i, i + 120), full: 1 });
-  flat('bld', 'f', [...P.bf], { full: 1 }); flat('bld', 'e', [].concat(...P.be), { full: 1 });
+  flat('obj', 'e', cat([...P.obj].filter(e => e[1])), { full: 1 });
+  const bs = cat(P.bs); for (let i = 0; i < bs.length; i += 120) to({ t: 'bld', s: bs.slice(i, i + 120), full: 1 });
+  flat('bld', 'f', [...P.bf], { full: 1 }); flat('bld', 'e', cat(P.be), { full: 1 });
   if (P.bm) to({ t: 'bld', m: P.bm });
   for (const m of P.ai) if (m) to(m);
   const men = [...P.men.values()].filter(r => P.menT - r.at < Math.max(2500, 1.5 * P.menP + 500)).map(r => r.e);

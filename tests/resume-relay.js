@@ -96,6 +96,14 @@ const N = require('./net'), { ok, done } = require('./harness');
   ok(wr.w.sus === 1 && wl.length === 94, 'the one who comes back gets both parts, ' + wl.length + ' soldiers, the older 6 s old');
   wr.close(); await N.sleep(150);
 
+  console.log('-- a match with very many destroyed building elements still resumes --');
+  const bh = await join('tank', 'tiger', { room: 'ww2', fresh: 1 });
+  for (let i = 0; i < 150000; i += 100) { bh.send({ t: 'bld', e: Array.from({ length: 200 }, (_, j) => j % 2 ? 1 : i + (j >> 1)) }); if (i % 5000 === 0) await N.sleep(5); }
+  bh.send(cq(bh.w.cqn, 321)); await N.sleep(1500); bh.close(); await N.sleep(150);
+  const bx = await join('tank', 'tiger', { room: 'ww2' }); await N.sleep(1500); const bn = [].concat(...of(bx, 'bld').filter(m => m.e).map(m => m.e.length));
+  ok(bx.w.sus === 1 && bn.reduce((a, b) => a + b, 0) === 300000 && of(bx, 'host').length === 1 && (of(bx, 'cq')[0] || {}).T === 321, 'resume sends all ' + bn.reduce((a, b) => a + b, 0) / 2 + ' elements and then host');
+  bx.close(); await N.sleep(150);
+
   console.log('-- a room that never played anything is not suspended --');
   const e1 = await join('inf', 'blueRifle'); e1.close(); await N.sleep(150);
   ok((await partidas()).modern === null, 'a player who joined and left without a match leaves nothing');

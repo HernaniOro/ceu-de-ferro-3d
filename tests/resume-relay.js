@@ -28,6 +28,7 @@ const N = require('./net'), { ok, done } = require('./harness');
   h.send({ t: 'eco', e: [[7, 1, 2, 10.5, -20.5, 1.5, 50, 100, 1]] });
   for (const s of [0, 1]) { h.send(ecs(s)); h.send(gen(s)); h.send({ t: 'glog', s, T: 30, e: [[1, 'k', 'old' + s, null, null, null, null]], full: 1 }); h.send({ t: 'glog', s, T: 31, e: [[2, 'k', 'new' + s, null, null, null, null]] }); }
   h.send({ t: 'rad', e: [[1, 0, 0, 10, 20, 3, 0]] }); h.send(cq(0, 754)); h.send({ t: 'keep', e: { v: 1, n: 'econ' } });
+  h.send({ t: 'mine', q: 3, i: 0, n: 1, e: [[5, 0, 1, 10, 20, 0], [6, 1, 0, 30, 40, 2]], s: 6 });   // one hidden mine of side 1
   g.send({ t: 'cq', n: 0, ph: 0, T: 1, k: [1, 1], k0: 1, len: 1, p: [], l: [0, 0, 0, 0, 0, 0] }); g.send({ t: 'obj', e: [99, 2] });   // a guest's word is not the match's
   await N.sleep(150);
 
@@ -54,6 +55,8 @@ const N = require('./net'), { ok, done } = require('./harness');
   ok((of(r, 'eco')[0] || {}).e && (of(r, 'rad')[0] || {}).e && of(r, 'cq').length === 1 && of(r, 'cq')[0].T === 754 && of(r, 'cq')[0].k.join() === '400,380', 'the economy\'s sites, the radios and the conquest with its clock where it stood (754 s)');
   const kp = r.got.findIndex(m => m.t === 'keep'), hs = r.got.findIndex(m => m.t === 'host'), last = Math.max(...['ai', 'obj', 'bld', 'cq', 'glog'].map(t => r.got.map(m => m.t).lastIndexOf(t)));
   ok(kp > last && hs > kp && r.got[kp].e.n === 'econ' && r.got[hs].id === r.id, 'then the sealed backup (keep), then host with its own id: the page adopts');
+  const mn = r.got.findIndex(m => m.t === 'mine');
+  ok(mn > kp && mn < hs && r.got[mn].e.length === 2 && r.got[mn].s === 6, 'and the whole mine list, the other side\'s hidden ones too, between keep and host, as a next host gets it');
   ok(!ol.includes(99) && of(r, 'cq').every(m => m.T !== 1), 'what a guest sent is not in it');
   ok((await partidas()).modern === null, 'the room has a player again: nothing suspended');
   r.got.forEach(m => { m.seen = 1; });
@@ -66,7 +69,7 @@ const N = require('./net'), { ok, done } = require('./harness');
   ok((await partidas()).modern.T === 600, 'the resumed match is suspended in turn, at 600 s');
   const f = await join('inf', 'blueRifle', { fresh: 1 });
   ok(f.w.host === f.id && !f.w.sus && f.w.cqn === 1, 'fresh: 1 is welcomed as host of a new match (cqn 1)');
-  ok(await none(f, 'ai') && await none(f, 'cq') && await none(f, 'keep') && await none(f, 'obj'), 'and is sent nothing of the old one');
+  ok(await none(f, 'ai') && await none(f, 'cq') && await none(f, 'keep') && await none(f, 'obj') && await none(f, 'mine'), 'and is sent nothing of the old one');
   f.send({ t: 'ai', k: 1, e: [veh] }); f.send(cq(1, 900)); await N.sleep(80); f.close(); await N.sleep(150);
 
   console.log('-- another map version starts again too --');

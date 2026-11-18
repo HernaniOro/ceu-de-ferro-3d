@@ -482,6 +482,8 @@ body[data-era="modern"] .hg::before{background:radial-gradient(70% 60% at 88% 0,
           <input id="pname" type="text" maxlength="16" autocomplete="off" spellcheck="false">
           <p id="netStatus" role="status"></p>
           <button class="chip" id="btnRetry" type="button" hidden>Tentar de novo</button>
+          <p id="susNote" hidden></p>
+          <button class="chip" id="btnFresh" type="button" title="Nova partida: descartar a partida suspensa desta sala e começar outra do zero" hidden>Nova partida</button>
         </div>
         <button class="launch" id="btnLaunch" type="button" title="Jogar: entrar na sala com o veículo escolhido">Decolar</button>
         <div class="hg-alt"><button class="chip" id="btnGen" type="button" title="General: entrar na sala como soldado no quartel-general e assumir o comando do seu lado pelo mapa (Tab)">General</button>
@@ -6142,7 +6144,7 @@ const Net = {
     Net.close();
     let ws; try { ws = new WebSocket(Net.url()); } catch (e) { return Net.ui.lost(false); }
     Net.ws = ws;
-    ws.onopen = () => Net.send('join', LO.tag({ room, name, cls, model, mv: MAPV, mv1: 1 }));
+    ws.onopen = () => { Net.send('join', LO.tag(Object.assign({ room, name, cls, model, mv: MAPV, mv1: 1 }, Net.fresh && { fresh: 1 }))); Net.fresh = false; };
     ws.onmessage = e => {
       if (ws !== Net.ws) return;
       let m; try { m = JSON.parse(e.data); } catch (err) { return; }
@@ -6442,6 +6444,16 @@ const Net = {
     }
   }
 };
+/* a suspended match (welcome rs: 1): when the room's last player left, the server kept the host's last word, and a player who joins the
+   empty room in time is welcomed as a guest (host 0, sus 1), sent that word, then made host: it adopts the battle as when a host leaves,
+   with the clock where it stood. Net.fresh: the next join asks for a new match instead (the hangar's "Nova partida"). Net.rs: the server
+   suspends; Net.sus: this join resumed one, until the host message */
+Net.fresh = false; Net.rs = false; Net.sus = false;
+Net.rx.welcome = (old => m => { Net.rs = m.rs === 1; Net.sus = m.sus === 1; old(m); })(Net.rx.welcome);
+Net.rx.host = (old => m => {
+  const was = Net.sus && m.id === Net.id && S && S.net && !S.host; old(m);
+  if (was) { Net.sus = false; S.banner = { text: 'Partida retomada', sub: 'De onde parou: o relógio ficou parado enquanto a sala esteve vazia', life: 4 }; }
+})(Net.rx.host);
 /* the damage model online. A server that knows the longer part states, part indices past ten, w (strike) and v, the parts behind the
    one struck, says so after welcome with dcap. With an older one the states are the old number (dbits), a part past the tenth is sent as
    the structure, and w and v do not arrive: a shaped charge or a shell that went in is then applied as a plain shell */
@@ -16447,6 +16459,7 @@ function buildHangar() {
   $('#briefing').textContent = text.slice(0, cut); $('#mission').textContent = text.slice(cut).trim() + ' ' + CQBRIEF(pvp);
   $('#btnInv').textContent = (k === 'heli' ? 'Cíclico' : 'Manche') + (invertY ? ': W puxa' : ': S puxa'); ffChip();
   for (const b of document.querySelectorAll('#ctrls .tab')) b.lastChild.textContent = CTRLTXT[k === 'heli' ? 1 : 0][b.dataset.ctrl === 'mouse' ? 1 : 0];
+  susFill(); if (!(Date.now() - (Net.susAt || 0) < 2000)) susPoll();
 }
 /* the Controles panel: opened by its chip, closed by its button, by Esc or by the chip again; the focus goes in and comes back */
 function keysPanel(v) {
@@ -16616,14 +16629,30 @@ $('#swapGo').addEventListener('click', goSwap);
 $('#swapNo').addEventListener('click', closeSwap);
 $('#btnSwap').addEventListener('click', () => (sw.on ? closeSwap() : openSwap()));
 /* PvP entry: join the era's room first, and take off when the server answers */
-function joinRoom() {
+function joinRoom(fresh) {
   if (!ready) return;
   audioInit();
   const name = $('#pname').value.trim().slice(0, 16) || 'Piloto', k = klass();
   try { localStorage.setItem('ceu-de-ferro-3d-nome', name); } catch (e) {}
   netStatus('Conectando a ' + Net.url() + '…');
-  Net.wantSpec = false; Net.connect(era, name, k, sel[era][k]);
+  Net.wantSpec = false; Net.fresh = fresh === true; Net.susO = null; Net.connect(era, name, k, sel[era][k]);
 }
+/* a suspended match in the era's room (GET /partidas on a server that suspends): "Entrar na sala" becomes "Continuar", which takes it up
+   where it stopped, and "Nova partida" joins asking for a new one. Asked when the hangar is built and every SUSPOLL s while it shows */
+const SUSPOLL = 10;
+function susFill() {
+  const q = Net.susO && Net.susO[era], L = $('#btnLaunch'), t = q ? Math.max(0, Math.round(q.T)) : 0;
+  $('#btnFresh').hidden = $('#susNote').hidden = !q;
+  L.textContent = q ? 'Continuar' : 'Entrar na sala';
+  L.title = q ? 'Continuar: retomar a partida suspensa desta sala, de onde parou, com o veículo escolhido' : 'Jogar: entrar na sala com o veículo escolhido';
+  if (q) $('#susNote').textContent = 'Partida suspensa nesta sala' + (q.ph ? ', já encerrada' : t ? ', com ' + Math.floor(t / 60) + ':' + String(t % 60).padStart(2, '0') + ' no relógio' : '') + '. Fica guardada por mais ' + Math.ceil(q.s / 60) + ' min.';
+}
+function susPoll() {
+  if (typeof fetch !== 'function' || hangar.hidden) return;
+  Net.susAt = Date.now();
+  fetch(Net.url().replace(/^ws/, 'http') + '/partidas', { cache: 'no-store' }).then(r => (r.ok ? r.json() : null)).then(o => { Net.susO = o && typeof o === 'object' ? o : null; if (!hangar.hidden) susFill(); }, () => {});
+}
+setInterval(() => { if (!hangar.hidden && !(Date.now() - (Net.susAt || 0) < SUSPOLL * 900)) susPoll(); }, SUSPOLL * 1000);
 function toHangar(msg, retry) { Net.close(); buildHangar(); startDemo(); netStatus(msg || '', retry); }
 const REFUSED = { room: 'O servidor não conhece esta sala.', model: 'O servidor recusou este veículo para esta sala. Se for a infantaria, o servidor ainda é o antigo e precisa ser reiniciado.', map: 'Esta sala usa outra versão do mapa. Atualize a página.', full: 'A sala está cheia. Tente de novo daqui a pouco.' };
 Net.ui = {
@@ -16809,6 +16838,7 @@ $('#pname').addEventListener('keydown', e => { if (e.key === 'Enter') joinRoom()
 $('#btnLeave').addEventListener('click', () => toHangar(''));
 $('#btnLaunch').addEventListener('click', joinRoom);
 $('#btnRetry').addEventListener('click', joinRoom);
+$('#btnFresh').addEventListener('click', () => joinRoom(true));
 $('#btnWatch').addEventListener('click', watchRoom);
 $('#btnAgain').addEventListener('click', launch);
 $('#btnHangar').addEventListener('click', () => { if (S && S.net) toHangar(); else { buildHangar(); startDemo(); } });

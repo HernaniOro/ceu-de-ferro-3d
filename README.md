@@ -222,6 +222,8 @@ Voando, o soldado fica parado e indefeso, e um tiro recebido arranca os óculos.
 
 No hangar, escolha "PvP online", um nome, a época, a classe e o veículo, e entre na sala. Cada época é uma sala e o lado do veículo é o time. A IA mantém a batalha dos dois lados, e quanto mais gente entra num lado, menos IA ele recebe. Quem simula a IA, os pontos e os tíquetes é o navegador do jogador mais antigo (o anfitrião); se ele sai, o seguinte continua a mesma batalha. Quem sai da sala ao volante deixa o veículo estacionado.
 
+Quando o último jogador sai (um F5, por exemplo), a partida fica suspensa, com o relógio parado, por 15 minutos (`SUSPEND=900`, em segundos; `SUSPEND=0` encerra a partida como antes). O hangar mostra então "Continuar", que retoma a partida de onde parou, e "Nova partida", que a descarta. A partida suspensa fica só na memória do servidor: reiniciá-lo a perde.
+
 - Na rede local: o servidor imprime os endereços `http://IP:8080` ao iniciar.
 - Pela internet: exponha a porta 8080 ou use um túnel, como `cloudflared` ou `ngrok`.
 

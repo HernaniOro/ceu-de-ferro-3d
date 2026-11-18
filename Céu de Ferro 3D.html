@@ -1194,8 +1194,9 @@ const fx = { shot() {}, boom() {}, launch() {}, over() {}, whistle() {}, enter()
 let S = null;
 
 /* ---------- terrain: a height grid generated once per era, with valleys cut along the roads ---------- */
-/* MAPV: the map's version. 1 is the first map, two roads; 2 adds the road network (RN, T.net), 3 the new places and points, 4 the centre axis and the manoeuvres. A room's version is its first player's, told in welcome (Net.mv) */
-let MAPV = 4;
+/* MAPV: the map's version. 1 is the first map, two roads; 2 adds the road network (RN, T.net), 3 the new places and points, 4 the centre axis and the manoeuvres,
+   5 the seat towns beside the bases, with their lots (CITY.plan.seat). A room's version is its first player's, told in welcome (Net.mv) */
+let MAPV = 5;
 const TERRAIN = {};
 function hash2(i, j, s) { const n = Math.sin(i * 127.1 + j * 311.7 + s * 74.7) * 43758.5453; return n - Math.floor(n); }
 function vnoise(x, z, s) {
@@ -4684,6 +4685,8 @@ function siteWhy(t, x, z, a) {
   for (const o of S.men) if (!o.dead && o.team !== t && hdist(o, at) < BLD.foe) return 'foe';
   return S.sup.reduce((n, b) => n + (b.team === t && !b.dead ? 1 : 0), 0) >= BLD.cap ? 'cap' : '';
 }
+/* side t's lot for a supply base in its seat town that x z lies in (map version 5), or undefined */
+const supLot = (t, x, z) => (S.T.lots || []).find(l => l.team === t && l.k === 'dep' && Math.hypot(l.x - x, l.z - z) < Math.min(l.w, l.d) / 2);
 /* a base's record and its object, under the id its owner gave it: here, or on the host's word */
 function addSup(id, team, x, z, a, prog) {
   const T = S.T, K = OBJ.supply, [w, d] = BLD.size, p = railOf(x, z), y = hgtT(T, x, z);
@@ -4763,7 +4766,9 @@ function build(P, I, key, trig) {
   if (key) S.bm = S.bm ? null : {};
   const B = S.bm; if (!B) return;
   const D = clamp(BLD.put[0] + (a.p + .5) * (BLD.put[1] - BLD.put[0]) / .5, BLD.put[0], BLD.put[1]), ch = Math.cos(a.h), sh = Math.sin(a.h);
-  B.x = P.x + ch * D; B.z = P.z - sh * D; B.a = a.h; B.y = hgt(B.x, B.z);
+  B.x = P.x + ch * D; B.z = P.z - sh * D; B.a = a.h;
+  const l = supLot(P.team, B.x, B.z); if (l) { B.x = l.x; B.z = l.z; B.a = l.a; }   // inside the seat town's depot lot: on the lot
+  B.y = hgt(B.x, B.z);
   B.why = S.net && !Net.sb ? 'server' : S.bw ? 'wait' : siteWhy(P.team, B.x, B.z, B.a) || (P.kit > 0 ? '' : 'kit');
   P.ctl.fire = P.ctl.ads = false;
   if (I.ordA) { S.bm = null; return; }
@@ -4783,6 +4788,7 @@ function aiSite(t) {
   const A = BLD.ai, R = S.T.routes, ds = t ? 1 : -1, fr = frontR(), mine = S.sup.filter(b => b.team === t && !b.dead), tries = [];
   if ((S.net && !Net.sb) || mine.length >= BLD.bots) return null;
   const bk = S.fld[t].bk || 0;   // after a loss the next one lies farther back
+  for (const l of S.T.lots || []) if (l.team === t && l.k === 'dep' && !siteWhy(t, l.x, l.z, l.a)) { const p = railOf(l.x, l.z); return { k: 'build', ri: p.ri, s: p.s, x: l.x, z: l.z, a: l.a, R: 9 }; }   // the seat town's depot lot first
   for (const w of towns()) if (w.hold === t && w.own !== t && !mine.some(b => hdist(b, w) < 900)) for (const sd of [1, -1]) tries.push([w.ri, w.s - ds * (FIELD.town + 80), sd * A.off]);   // the chain goes on behind a town that was taken
   for (const ri of axesFrom(fr)) if (!mine.some(b => b.ri === ri)) for (let k = 0; k < 6; k++) for (const sd of [1, -1]) tries.push([ri, lineS(t, ri) - ds * (A.back + bk + k * 70), sd * A.off]);
   for (const w of towns()) if (w.hold === t) for (const sd of [1, -1]) tries.push([w.ri, w.s - ds * (FIELD.town + 80), sd * A.off]);
@@ -8222,7 +8228,14 @@ const CITY = { bay: 5, sh: 4.4, body: 2,
     modern: { core: [['apart', 3], ['block', 4], ['row', 1]], mid: [['block', 2], ['row', 2], ['house', 3]], out: [['house', 1]], hall: [['hall', 2], ['plant', 1]] } },
   plan: { town: [310, 215], village: [150, 110], out: 1500, keep: 11, block: [58, 42], street: 16, main: 19, court: 11, set: 1.5, gap: [1, 6], zone: [.5, .78], thin: .35, road: 14, slope: 3.2, edge: 40, base: 1500,
     pat: { core: [['rows', 9], ['square', 1]], mid: [['rows', 5], ['hall', 2], ['villa', 3], ['square', 1]], out: [['villa', 7], ['none', 2]] },
-    ham: { step: 420, p: .5, off: [52, 74], base: 2500, apart: 1150, r: 70 } },
+    ham: { step: 420, p: .5, off: [52, 74], base: 2500, apart: 1150, r: 70 },
+    /* map version 5: a seat town per base, d m along a main road from it toward the front (the first spot, every step m, whose
+       circle stays clear m off every other place), its buildings kept base m from the bases instead of plan.base, at most cap of
+       them (its own share: not counted against RN.hcap; the rows nearest the road are planned first). lots: its blocks kept empty
+       for the side's economy, [kind, ku, side of the road, row, roof]: fab a factory's shed, pow a power plant's industrial block, dep a
+       supply base, aa the square a fixed AA stands on, or with roof a flat-roofed block it stands on (ECO.lot) */
+    seat: { d: [1850, 3000], step: 50, clear: 150, base: 1300, cap: 100, nm: 'Sede',
+      lots: [['fab', -2, 1, 0], ['pow', 2, -1, 0], ['fab', 3, 1, 0], ['pow', -3, -1, 0], ['pow', -1, -1, 1], ['aa', 0, -1, 0], ['dep', -2, -1, 1], ['aa', 1, -1, 1, 1]] } },
   stair: [.8, .6, 1.65, .5],
   ai: { post: 60, men: 6, stay: 25, shy: 8, clear: 45, nade: 6, enter: 2.2, art: 2, tank: 400, flee: 4 } };
 OBJ.bld = { hp: [100, 0], sight: 1, take: [1, 1, 1], ruin: { h: 2.2, slow: .5 }, fall: { r: 5, dmg: 26 }, veh: bldBump };
@@ -8252,9 +8265,23 @@ function cityBurgs(T, era) {
   T.burgs = T.towns.map(w => ({ x: w.x, z: w.z, ru: C.town[0], rv: C.town[1], k: 'town' }));
   T.towns.forEach((w, i) => { const q = railT(T, w.x, w.z), p = routeAt(T.routes[q.ri], q.s + (i ? 1 : -1) * C.out); T.burgs.push({ x: p.x, z: p.z, ru: C.village[0], rv: C.village[1], k: 'village' }); });
   if (T.net && T.mv >= 3) cityBurgsNet(T, era);
+  if (T.mv >= 5) citySeats(T);
   T.ckeep = [];
   T.towns.forEach(w => { const q = railT(T, w.x, w.z), p = routeAt(T.routes[q.ri], q.s); for (const g of [1, -1]) for (const off of [23, 37]) T.ckeep.push({ x: p.x - p.dz * off * g, z: p.z + p.dx * off * g }); });
   T.towns.forEach(w => { const t = w.x < T.W / 2 ? 0 : 1, e = T.bases[1 - t], a0 = headTo(w.x, w.z, e.x, e.z); for (let k = 0; k < 2; k++) { const a = k * 2.3 + t; T.ckeep.push({ x: w.x + Math.cos(a) * FORT.dig.garr + Math.cos(a0) * 6, z: w.z + Math.sin(a) * FORT.dig.garr - Math.sin(a0) * 6 }); } });
+}
+/* map version 5: the seat town of each base, on the first of its main roads (T.routes, base 1 at s 0, base 0 at the end) with room for it,
+   put before the net places so they are planned first */
+function citySeats(T) {
+  const C = CITY.plan, Q = C.seat, ru = C.town[0], i0 = T.burgs.findIndex(b => b.e !== undefined), seats = [];
+  T.bases.forEach((B, t) => {
+    for (let d = Q.d[0]; d <= Q.d[1]; d += Q.step) for (let ri = 0; ri < Math.min(2, T.routes.length); ri++) {
+      const r = T.routes[ri], p = routeAt(r, t ? d : r.len - d);
+      if (seats.some(q => q.team === t) || !T.burgs.concat(seats).every(b => Math.hypot(b.x - p.x, b.z - p.z) > b.ru + ru + Q.clear)) continue;
+      seats.push({ x: p.x, z: p.z, ru, rv: C.town[1], k: 'town', seat: t, team: t, nm: Q.nm });
+    }
+  });
+  T.burgs.splice(i0 < 0 ? T.burgs.length : i0, 0, ...seats);
 }
 /* the ground of a built-up place is as even as a road's */
 function cityFlat(T, x, z, h, road) {
@@ -8266,7 +8293,8 @@ const cityFar = (T, x, z) => T.burgs.every(b => Math.hypot(x - b.x, z - b.z) > b
    lines left free between the blocks (T.lanes: the same as the paths the scene paves). A town's grid follows its road: u m along
    it from the town's middle, v m to its side */
 function cityPlan(T, era) {
-  const C = CITY.plan, M = CITY.mix[era], out = (T.houses = []), ST = (T.streets = []), LN = (T.lanes = []), BW = C.block[0], BD = C.block[1], SW = C.street;
+  const C = CITY.plan, M = CITY.mix[era], out = (T.houses = []), ST = (T.streets = []), LN = (T.lanes = []), LT = (T.lots = []), BW = C.block[0], BD = C.block[1], SW = C.street;
+  let keepB = C.base, nSeat = 0;   // the m a footprint keeps from the bases, for the place being planned; the seat towns' buildings
   let seed = (era === 'ww2' ? 11 : 29) * 104729 + 7;
   const rnd = () => (seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0) / 4294967296, ri = r => r[0] + Math.floor(rnd() * (r[1] - r[0] + 1)), of = l => { let t = 0, v; for (const e of l) t += e[1]; v = rnd() * t; for (const e of l) if ((v -= e[1]) < 0) return e[0]; return l[0][0]; };
   const SM = [[0, 0], [1, 1], [1, -1], [-1, 1], [-1, -1], [1, 0], [-1, 0], [0, 1], [0, -1]];
@@ -8276,7 +8304,7 @@ function cityPlan(T, era) {
     if (d0 < C.road || T.ckeep.some(k => Math.hypot(k.x - x, k.z - z) < r + C.keep)) return null;
     for (const [e, f] of SM) {
       const px = x + e * w / 2 * c + f * d / 2 * s, pz = z - e * w / 2 * s + f * d / 2 * c, h = hgtT(T, px, pz); lo = Math.min(lo, h); hi = Math.max(hi, h);
-      if ((d0 < C.road + r && routeDist(T, px, pz) < C.road) || h < T.WL + 3 || px < C.edge || px > T.W - C.edge || Math.abs(pz) > T.HW - C.edge || Math.min(Math.hypot(px - T.bases[0].x, pz - T.bases[0].z), Math.hypot(px - T.bases[1].x, pz - T.bases[1].z)) < C.base) return null;
+      if ((d0 < C.road + r && routeDist(T, px, pz) < C.road) || h < T.WL + 3 || px < C.edge || px > T.W - C.edge || Math.abs(pz) > T.HW - C.edge || Math.min(Math.hypot(px - T.bases[0].x, pz - T.bases[0].z), Math.hypot(px - T.bases[1].x, pz - T.bases[1].z)) < keepB) return null;
     }
     if (hi - lo > C.slope) return null;
     for (const q of out) {
@@ -8288,7 +8316,8 @@ function cityPlan(T, era) {
   };
   const dims = (t, mw, md) => { const K = CITY.types[t], bw = K.bay || CITY.bay, nx = Math.min(ri(K.nx), Math.floor(mw / bw)), nz = Math.min(ri(K.nz), Math.floor(md / bw)); return nx >= K.nx[0] && nz >= K.nz[0] ? [nx, nz, ri(K.nl)] : null; };
   for (const b of T.burgs) {
-    if (b.e !== undefined && out.length >= RN.hcap) continue;   // the new places stop when the buildings are many (map version 3)
+    if (b.e !== undefined && out.length - nSeat >= RN.hcap) continue;   // the new places stop when the buildings are many (map version 3); the seats have their own share
+    const n0 = out.length, seat = b.seat !== undefined; keepB = seat ? C.seat.base : C.base;
     const q = b.e === undefined ? railT(T, b.x, b.z) : cityFrame(T, b), r = b.e === undefined ? T.routes[q.ri] : q.r, big = b.k === 'town', at = (u, v) => { const p = routeAt(r, q.s + u); return { x: p.x - p.dz * v, z: p.z + p.dx * v, a: Math.atan2(-p.dz, p.dx) }; };
     const lane = l => { LN.push(l); for (let k = 1; k < l.length; k++) ST.push([l[k - 1].x, l[k - 1].z, l[k].x, l[k].z]); };
     const nu = Math.ceil(b.ru / (BW + SW)), nv = Math.ceil((b.rv - C.main) / (BD + SW)); let mark = big;
@@ -8296,7 +8325,13 @@ function cityPlan(T, era) {
     for (let k = -nu; k < nu; k++) { const u = (k + .5) * (BW + SW), e = b.rv * Math.sqrt(Math.max(.05, 1 - (u / b.ru) * (u / b.ru))); if (Math.abs(u) < b.ru) lane([at(u, -e), at(u, 0), at(u, e)]); }
     for (let kv = 0; kv < nv; kv++) for (const g of [1, -1]) for (let ku = -nu; ku <= nu; ku++) {
       const u0 = ku * (BW + SW), v0 = g * (C.main + BD / 2 + kv * (BD + SW)), e = Math.hypot(u0 / b.ru, v0 / b.rv) + (rnd() - .5) * .14, zone = e < C.zone[0] && big ? 'core' : e < C.zone[1] ? 'mid' : 'out';
-      if (e > 1) continue;
+      if (e > 1 || (seat && out.length - n0 >= C.seat.cap)) continue;
+      const lot = seat && C.seat.lots.find(l => l[1] === ku && l[2] === g && l[3] === kv);
+      if (lot) {   // a lot: kept empty for the economy, or a block whose roof carries the AA
+        const P = at(u0, v0), l = { k: lot[0], team: b.seat, x: P.x, z: P.z, a: P.a, w: BW - 4, d: BD - 6 };
+        if (lot[4]) { if (!put('block', P.x, P.z, P.a, 4, 3, 2)) continue; l.hi = out.length - 1; }
+        LT.push(l); continue;
+      }
       const first = mark && !kv && ku === 1 && g === 1, pat = first ? 'square' : of(C.pat[zone]);
       if (pat === 'rows') for (const fs of [-1, 1]) {
         const md = (BD - C.court) / 2;
@@ -8319,7 +8354,9 @@ function cityPlan(T, era) {
         put('church', P.x, P.z, P.a, D[0], D[1], 1); put('tower', Q.x, Q.z, Q.a, 2, 2, 7); mark = false;
       }
     }
+    if (seat) nSeat += out.length - n0;
   }
+  keepB = C.base;
   /* farms and hamlets beside the roads, far enough from anything built that each is a place of its own */
   const H = C.ham, hams = [];
   T.routes.forEach((r, k) => {
@@ -8375,7 +8412,8 @@ function cityObjs(T) {
   for (const o of T.objs) {
     if (o.k !== 'tree') continue;
     const b = T.burgs.find(b => Math.hypot(o.x - b.x, o.z - b.z) < b.ru + 30); if (!b) continue;
-    if (T.houses.some(q => Math.abs(q.x - o.x) < q.r + 5 && Math.abs(q.z - o.z) < q.r + 5 && footD(q, o.x, o.z) < 5) || (b.k !== 'hamlet' && T.streets.some(l => sd(l, o.x, o.z) < CITY.plan.street / 2))) cut.add(o);
+    if (T.houses.some(q => Math.abs(q.x - o.x) < q.r + 5 && Math.abs(q.z - o.z) < q.r + 5 && footD(q, o.x, o.z) < 5) || (b.k !== 'hamlet' && T.streets.some(l => sd(l, o.x, o.z) < CITY.plan.street / 2))
+      || (T.lots || []).some(l => Math.hypot(l.x - o.x, l.z - o.z) < Math.hypot(l.w, l.d) / 2 + 5)) cut.add(o);   // a lot is open ground
   }
   for (const o of cut) { T.byId[o.id] = undefined; cellsOf(T, o, k => { G.c[k] = G.c[k].filter(q => q !== o); }); if (o.id >= 30300 && T.wn) { const k = nodeAt(T, o.x, o.z); if (T.wn[k]) T.wn[k]--; } }
   if (cut.size) T.objs = T.objs.filter(o => !cut.has(o));
@@ -8561,6 +8599,7 @@ function bldDown(o, quiet) {
   for (let e = 0; e < B.oR; e++) S.cbs[off + e] = 3;
   for (let e = B.oR; e < B.n; e++) S.cbs[off + e] = 2 + (e * 7 + o.id) % 2;
   S.cblog.push(-1 - (o.id - S.T.bid)); B.rev++; B.doom = null; B.down = true; S.oh[o.id] = 0;
+  for (const u of S.units) if (u.roof === o) u.y = hgt(u.x, u.z);
   if (S.net && S.host) Net.yf.push(o.id - S.T.bid);
   setObj(o, 2, null, quiet);
 }
@@ -11790,6 +11829,11 @@ const ECO = { on: 1, gate: 1, me: 0, dt: .5, cap: { en: 1000, mt: 1000 }, start:
   hurt: .5, soft: 2, help: .5, reach: 2500, apart: 300, front: 300, foe: 400, road: 500, q: 12, res: 6, refund: .5, scrap: .3, miss: 5,
   boom: [14, 45], ruin: 60, col: { retry: 15 },
   see: { gnd: 1200, man: 500, air: 1800, dr: 600, cov: .5 }, gd: { r: 250, ring: 40, off: 45 },
+  /* map version 5: the lots of a side's seat town (T.lots). A site set on a lot of its kind (at most at m from its middle) is anchored
+     by it, keeps only apart m from another site on a lot, and to the other side is a building like any other until identified: an
+     enemy (a vehicle, a soldier or an aircraft) that sees it within id m, a reconnaissance drone or a man of a reconnaissance team
+     or a scouting squad within over m of it (passing over it). Until then it is not spotted, not in ecoFoe and not a target */
+  lot: { at: 4, apart: 60, id: 400, over: 150 },
   tg: { cas: 1500, tank: 400, dv: 2, pri: 1200, rounds: 6, life: 120 },
   ai: { every: 4, keep: { en: 120, mt: 120 }, pay: .5, floor: 30, q: 6, at: [240, 720],
     want: { pow: [2, 3, 4], mine: [2, 3, 4], fab: [1, 2, 2] },
@@ -11800,14 +11844,14 @@ const ECO = { on: 1, gate: 1, me: 0, dt: .5, cap: { en: 1000, mt: 1000 }, start:
     find: 2, stale: 300, scout: 150, ahead: 1500,
     look: [[.92, .15], [.80, -.30], [.75, .70], [.90, .85], [.65, .20]],     // side 0 looks here in side 1's half; side 1 mirrored
     spot: { grid: 400, min: 500, max: 3200, back: 800, obs: 6 },
-    sc: { hide: 3, cov: 1.5, deep: 1, far: .6, clump: 2, aa: 1, rich: 1.5, dead: 3, near: 600, dz: 800, dT: 300 } },
+    sc: { hide: 3, cov: 1.5, deep: 1, far: .6, clump: 2, aa: 1, rich: 1.5, dead: 3, near: 600, dz: 800, dT: 300, lot: 5 } },
   tx: { nm: { pow: 'Usina', mine: 'Mina', fab: 'Fábrica', hq: 'Quartel-general' }, pl: { pow: 'usinas', mine: 'minas', fab: 'fábricas' },
     r: { en: 'Energia', mt: 'Metal' }, dep: 'Jazida', rich: 'Jazida rica',
     u: { squad: 'Esquadra', car: 'Viatura', truck: 'Caminhão', lav: 'Blindado leve', aa: 'Antiaérea móvel', art: 'Artilharia',
       tank: 'Carro de combate', rad: 'Veículo-rádio', aaf: 'Antiaérea fixa', fighter: 'Caça', cas: 'Avião de ataque',
       heli: 'Helicóptero de ataque', lift: 'Helicóptero de transporte', drone: 'Lote de drones' },
     why: { map: 'fora do mapa', water: 'na água', steep: 'terreno inclinado', road: 'em cima da estrada', obj: 'obstruído',
-      near: 'perto demais de outra instalação', far: 'fora do território', front: 'à frente da linha', dep: 'mina só sobre jazida livre',
+      near: 'perto demais de outra instalação', lot: 'num lote da cidade-sede', far: 'fora do território', front: 'à frente da linha', dep: 'mina só sobre jazida livre',
       fabroad: 'fábrica precisa de estrada a menos de 500 m', foe: 'inimigo por perto', cap: 'limite deste tipo de instalação',
       q: 'fila cheia', era: 'não existe nesta época', kind: 'tipo desconhecido', id: 'não encontrado',
       unknown: 'instalação inimiga não localizada', ctl: 'este lado não é comandado por este controle', over: 'partida encerrada',
@@ -11822,6 +11866,10 @@ const ecoD = t => S.eco.d[t];
 const ecoCost = k => (ECO.unit[k] ? ECO.unit[k] : ECO.site[k] && [ECO.site[k].en, ECO.site[k].mt, ECO.site[k].t, 'site']);
 const ecoKinds = () => Object.keys(ECO.unit).filter(k => !ECO.unit[k][4] || ECO.unit[k][4] === S.era);
 const ecoR = v => Math.round(v) + 0;   // an integer that is never -0 (the view is compared as JSON)
+/* the index in T.lots of side t's lot for a site of kind k at x z, or -1 (map version 5) */
+const ecoLot = (t, k, x, z) => (S.T.lots || []).findIndex(l => l.team === t && l.k === k && Math.hypot(l.x - x, l.z - z) <= ECO.lot.at);
+/* a site that side t cannot tell from a plain building: on a lot and not identified */
+const ecoHid = (e, t) => e.lot >= 0 && !e.idf && e.team !== t;
 /* where, in the words of the map: near the nearest point of the conquest (as the general names it), else behind the lines */
 function ecoNear(x, z) {
   let b = null, bd = 900;
@@ -11862,7 +11910,8 @@ function addEco(id, team, k, x, z, a, prog) {
   const o = { id, k: ECOK[k], K, x, y, z, hw: w / 2, hd: d / 2, h, a, c: Math.cos(a), s: Math.sin(a), rd: 0, r: Math.hypot(w, d) / 2, hp: K.hp[0] };
   const dp = k === 'mine' ? S.eco.dep.findIndex(q => Math.hypot(q.x - x, q.z - z) <= ECO.dep) : -1;
   const e = (o.es = { id, j: id - T.nid - NDYN, team, k, x, y, z, a, prog: 0, o, kind: 'eco', sup: 1, eco: 1, v: ZERO, name: ECO.tx.nm[k],
-    dead: false, gone: false, deadT: 0, seenT: -1e9, sx: x, sz: z, moveT: -99, ri: p.ri, s: p.s, off: p.d, dep: dp, gd: { inf: 0, aa: 0 }, n: 0 });
+    dead: false, gone: false, deadT: 0, seenT: -1e9, sx: x, sz: z, moveT: -99, ri: p.ri, s: p.s, off: p.d, dep: dp, gd: { inf: 0, aa: 0 }, n: 0,
+    lot: ecoLot(team, k, x, z), idf: false });
   for (const r of S.eco.l) if (r.j === e.j && r.dead) r.gone = true;
   S.eco.l = S.eco.l.filter(r => !r.gone);
   S.wob[id - T.nid] = o; S.os[id] = 0; S.oh[id] = o.hp; S.ot[id] = -99;
@@ -11897,9 +11946,9 @@ function ecoWhy(t, k, x, z, a) {
   const rd = routeDist(S.T, x, z);
   if (rd < BLD.road + R) return 'road';
   for (const o of near(x, z, R + BLD.pad + 4)) if ((S.os[o.id] < 2 || o.K.ruin) && footD(o, x, z) < R + BLD.pad) return 'obj';
-  const own = ecoLive(t);
-  if (own.some(e => hdist(e, at) < ECO.apart)) return 'near';
-  const anchor = hdist(S.base[t], at) < ECO.reach || own.some(e => e.prog >= 1 && hdist(e, at) < ECO.reach) || S.sup.some(b => !b.dead && b.prog >= 1 && b.team === t && hdist(b, at) < ECO.reach)
+  const own = ecoLive(t), lot = ecoLot(t, k, x, z) >= 0;
+  if (own.some(e => hdist(e, at) < (lot && e.lot >= 0 ? ECO.lot.apart : ECO.apart))) return 'near';
+  const anchor = lot || hdist(S.base[t], at) < ECO.reach || own.some(e => e.prog >= 1 && hdist(e, at) < ECO.reach) || S.sup.some(b => !b.dead && b.prog >= 1 && b.team === t && hdist(b, at) < ECO.reach)
     || (S.cq && S.cq.p.some(p => p.hold === t && hdist(p, at) < ECO.reach));
   if (!anchor) return 'far';
   if (ecoDepth(t, x, z) < ECO.front) return 'front';
@@ -11936,6 +11985,7 @@ function ecoSpot(t, k) {
       const a = ecoFace(x, z); if (ecoWhy(t, k, x, z, a)) continue;
       const r = score(x, z, 0); out.push({ x, z, a, sc: r.sc, why: r.why });
     }
+    for (const l of S.T.lots || []) if (l.team === t && l.k === k && !ecoWhy(t, k, l.x, l.z, l.a)) out.push({ x: l.x, z: l.z, a: l.a, sc: score(l.x, l.z, 0).sc + W.lot, why: ECO.tx.why.lot });   // the seat town's lots: disguised
   }
   return out.sort((p, q) => q.sc - p.sc);
 }
@@ -12021,7 +12071,9 @@ function ecoStep(dt) {
     if (E.ctl[t] === 'ai' && S.t >= d.aiT) { d.aiT = S.t + ECO.ai.every; for (const c of ecoAI(t, ecoView(t))) genCmd(t, c, 'ai'); }
     for (const s of E.l) {   // a finished site with a fixed AA asked for and none within reach: one from the reserve, a little toward the enemy
       if (s.team !== t || s.dead || s.prog < 1 || !s.gd.aa || S.units.some(u => !u.dead && u.fixed && u.kind === 'aa' && u.team === t && hdist(u, s) < ECO.gd.r) || !ecoUse(t, 'aaf')) continue;
-      const b = S.base[1 - t], h = headTo(s.x, s.z, b.x, b.z), u = addUnit('aa', t, s.x + Math.cos(h) * ECO.gd.off, s.z - Math.sin(h) * ECO.gd.off, null, true);
+      const b = S.base[1 - t], h = headTo(s.x, s.z, b.x, b.z), sq = s.lot >= 0 && (S.T.lots || []).find(l => l.team === t && l.k === 'aa' && hdist(l, s) < ECO.gd.r * 2 && !(l.hi >= 0 && S.os[S.T.houses[l.hi].id] >= 2) && !S.units.some(u => !u.dead && u.fixed && hdist(u, l) < ECO.lot.at * 4));   // in the seat town: on its square or a roof
+      const u = sq ? addUnit('aa', t, sq.x, sq.z, null, true) : addUnit('aa', t, s.x + Math.cos(h) * ECO.gd.off, s.z - Math.sin(h) * ECO.gd.off, null, true);
+      if (sq && sq.hi >= 0) { u.roof = S.T.houses[sq.hi]; u.y = u.roof.y + u.roof.hh; }
       u.es = s; gLog(t, 'eco', 'Antiaérea fixa instalada junto à ' + s.name.toLowerCase(), s);
     }
   }
@@ -12102,6 +12154,8 @@ function ecoCmd(t, c, by) {
   switch (c.c) {
     case 'build': {
       const B = ECO.site[c.k]; if (!B) return no('kind');
+      const l = (S.T.lots || []).find(l => l.team === t && l.k === c.k && Math.hypot(l.x - c.x, l.z - c.z) < Math.min(l.w, l.d) / 2 && !ecoLive(t).some(e => hdist(e, l) <= ECO.lot.at));
+      if (l) c = Object.assign({}, c, { x: l.x, z: l.z, a: l.a });   // inside a free lot of its kind: on the lot, as the town's blocks lie
       const a = c.a === undefined ? ecoFace(c.x, c.z) : c.a, w = ecoWhy(t, c.k, c.x, c.z, a);
       if (w) return no(w);
       if (d.q.length >= ECO.q) return no('q');
@@ -12265,7 +12319,7 @@ function ecoVM(t, all) {
 /* ---- the economy at war: what each side finds of the other's sites, what it sends against them, what guards its own, where it looks ----
    Spotting runs on every peer (spot); only the host, which has both sides' truth, writes the memory (kn) and its log; a guest has its own
    side's memory from the ecs message. The enemy's sites are targets of the attack planes, tanks, batteries, drones and raids (ecoFoe) */
-const ecoFoe = t => (S.eco ? S.eco.l.filter(e => !e.dead && e.team !== t) : []);
+const ecoFoe = t => (S.eco ? S.eco.l.filter(e => !e.dead && e.team !== t && !ecoHid(e, t)) : []);
 Object.assign(GAI.art.val, { eco: 3 });
 /* where side t looks for the other's sites: ECO.ai.look point i, in the other half (side 1's mirrored through the centre) */
 const ecoLook = (t, i) => { const [fx, fz] = ECO.ai.look[i]; return t ? { x: S.W - fx * S.W, z: -fz * S.HW } : { x: fx * S.W, z: fz * S.HW }; };
@@ -12279,6 +12333,15 @@ function ecoRec(t, O, sc) {
 }
 postDisp = (f => (t, job, k) => { const O = f(t, job, k), sc = job === 'rec' && !k && S.eco && ecoScout(t); return sc ? ecoRec(t, O, sc) : O; })(postDisp);
 bldTargets = (f => (u, all) => { f(u, all); for (const e of ecoFoe(u.team)) all.push(e); })(bldTargets);
+/* whether a disguised site is identified now: ECO.lot's rules; logged for the side that found it */
+function ecoIdf(e, cams) {
+  const L = ECO.lot, f = 1 - e.team, rec = m => !!m.sq && (m.sq.job === 'rec' || (m.sq.ord && m.sq.ord.k === 'scout'));
+  const by = S.units.find(o => !o.dead && o.team === f && hdist(o, e) < L.id && sees(o, e)) || S.men.find(o => !o.dead && !o.in && o.team === f && ((hdist(o, e) < L.id && sees(o, e)) || (rec(o) && hdist(o, e) < L.over)))
+    || S.planes.find(o => !o.dead && o.team === f && dist(o, e) < L.id && sees(o, e)) || cams.find(o => o.team === f && hdist(o, e) < L.over);
+  if (!by) return false;
+  e.idf = true; gLog(f, 'eco', 'Identificada ' + e.name.toLowerCase() + ' disfarçada na cidade-sede inimiga', e, 'id' + e.id);
+  return true;
+}
 /* a site is seen by the other side's ground units, soldiers, aircraft and camera drones, each at its own range (shorter in a wood or a town);
    every peer notes it on the record (seenT, as for a supply base), the host also in the side's memory with a line in its log */
 function ecoSeen() {
@@ -12286,6 +12349,7 @@ function ecoSeen() {
   const R = ECO.see, cams = drones().filter(o => !o.dead && !o.gone && o.def.job === 'rec' && (o.ai || o.net || o.link > .2));
   for (const e of E.l) {
     if (e.dead || S.t - e.seenT < 3) continue;
+    if (ecoHid(e, 1 - e.team) && !(ecoSim() && ecoIdf(e, cams))) continue;   // a building like any other until identified (the host decides; a guest is told in eco)
     const c = kindAt(e.x, e.z) === 1 || S.T.houses.some(o => S.os[o.id] < 2 && hdist(o, e) < 150) ? R.cov : 1;
     if (!(S.units.some(o => !o.dead && o.team !== e.team && hdist(o, e) < R.gnd * c && sees(o, e)) || S.men.some(o => !o.dead && !o.in && o.team !== e.team && hdist(o, e) < R.man * c && sees(o, e))
       || S.planes.some(o => !o.dead && o.team !== e.team && dist(o, e) < R.air * c && sees(o, e)) || cams.some(o => o.team !== e.team && hdist(o, e) < R.dr * c && sees(o, e)))) continue;
@@ -12533,6 +12597,7 @@ function ecoRows() {
   for (const e of S.eco.l) {
     const k = ESK.indexOf(e.k); if (k < 0 || r.length >= 40) continue;
     r.push([e.id, e.team, k, enetR1(e.x), enetR1(e.z), Math.round(e.a * 100) / 100, Math.round(e.prog * 100), Math.ceil(Math.max(0, S.oh[e.id])), e.dead ? 2 : S.os[e.id]]);
+    if (e.lot >= 0) r[r.length - 1].push(e.idf ? 1 : 0);   // a site on a lot: whether the other side has identified it
   }
   return r;
 }
@@ -12683,6 +12748,7 @@ Net.rx.eco = m => {
     if (r && (r.team !== team || r.k !== kind || Math.hypot(r.x - x, r.z - z) > 1)) { r.gone = true; if (!r.dead) dropObj(r.o); r = null; E.l = E.l.filter(q => !q.gone); }
     if (!r) { if (st === 2) continue; r = addEco(id, team, kind, x, z, a, pg / 100); }
     if (r.dead) continue;
+    if (e.length >= 10) r.idf = !!(e[9] & 1);
     if (Math.round(r.prog * 100) !== pg) ecoAt(r, pg / 100);
     S.oh[id] = hp;
     if (st !== S.os[id]) setObj(r.o, st, null);
@@ -13133,6 +13199,7 @@ const GC = {
     if (R) { supOpen(C, R.O, R.q); return gYes(); }
     if (S.net && !(S.host && Net.sb)) return gBad('off');
     if (!gMapOk(c.x, c.z)) return gBad('map');
+    const l = supLot(t, c.x, c.z); if (l) c = Object.assign({}, c, { x: l.x, z: l.z, a: l.a });
     const a = Number.isFinite(c.a) ? c.a : headTo(c.x, c.z, S.base[1 - t].x, S.base[1 - t].z), w = siteWhy(t, c.x, c.z, a); if (w) return gBad(w);
     const p = railOf(c.x, c.z), qs = gSqs(t, c.ids).filter(q => gOrdOk(q, p.ri)); if (!qs.length) return gBad(gSqs(t, c.ids).length ? 'reach' : 'sq');
     const q = qs[0]; if (q.op) { gDrop(q); q.op = null; q.back = null; }
@@ -13646,10 +13713,12 @@ function lookSup(b, m) {
 }
 /* a site of the economy, in buildSup's style: boxes in the side's colours, rising with its progress. usina: a slab, a boiler house, two
    chimneys and a transformer yard; mina: a headframe, a wheel, a spoil heap and a shed; fabrica: a hall with a sawtooth roof, a chimney and a yard.
-   U.rise: [mesh, bottom, height] scaled from the ground up with the build; U.late: from half built; U.roof: from .85; U.mast: when finished */
+   U.rise: [mesh, bottom, height] scaled from the ground up with the build; U.late: from half built; U.roof: from .85; U.mast: when finished.
+   On a lot of the seat town (map version 5) U.F is the plain building the other side sees until it identifies the site (ecoHid), U.R the site */
 function buildEco(e) {
-  const g = new THREE.Group(), [w, d, h] = ECO.site[e.k].box, sd = S.E.sides[S.fac[e.team]], U = g.userData;
-  const box = (sx, sy, sz, x, y, z, c) => { const m = new THREE.Mesh(new THREE.BoxGeometry(sx, sy, sz), mat(c)); m.position.set(x, y, z); g.add(m); return m; };
+  const g = new THREE.Group(), [w, d, h] = ECO.site[e.k].box, sd = S.E.sides[S.fac[e.team]], U = g.userData, R = (U.R = new THREE.Group());
+  let to = R; g.add(R);
+  const box = (sx, sy, sz, x, y, z, c) => { const m = new THREE.Mesh(new THREE.BoxGeometry(sx, sy, sz), mat(c)); m.position.set(x, y, z); to.add(m); return m; };
   const rise = (sx, sy, sz, x, y, z, c) => { const m = box(sx, sy, sz, x, y + sy / 2, z, c); (U.rise || (U.rise = [])).push([m, y, sy]); return m; };
   U.late = []; U.roof = []; U.posts = [];
   box(w + 2, .5, d + 2, 0, .05, 0, 0x6b5f47);
@@ -13668,11 +13737,17 @@ function buildEco(e) {
     U.late.push(box(1.6, h * 1.8, 1.6, w * .38, .3 + h * .9, -d * .25, 0x4a4034), box(2.4, 2, 2.4, -w * .3, 1.3, d * .48 + 1.5, 0x55633a), box(2.4, 1.6, 2.4, 0, 1.1, d * .48 + 1.5, 0x6d5a3a));
   }
   U.mast = [box(.2, h + 5, .2, -w / 2 + .5, (h + 5) / 2, d / 2 - .5, 0x34372f), box(.1, 1.3, 2.2, -w / 2 + .5, h + 4.2, d / 2 + .7, e.team === S.me ? 0x6fc3b2 : 0xe2604f)];
+  if (e.lot >= 0) {   // a shed or a block of the town: plaster walls, a tiled gable roof
+    to = U.F = new THREE.Group(); g.add(to);
+    box(w * .9, h, d * .85, 0, h / 2 + .3, 0, e.k === 'fab' ? 0x8d8d84 : 0xb9ad94);
+    for (const f of [-1, 1]) { const m = box(w * .94, .35, d * .5, 0, h + .3 + d * .12, f * d * .2, 0x7d4b3a); m.rotation.x = f * .5; }
+  }
   return g;
 }
 function lookEco(e, m) {
   const U = m.userData, k = e.prog, dn = e.dead, wk = dn ? .22 : clamp((k - .2) / .65, .04, 1), show = (l, v) => { for (const o of l) o.visible = v; };
   m.position.set(e.x, e.y, e.z); m.rotation.y = e.a;
+  if (U.F) { const fk = !S.spec && ecoHid(e, S.me); U.F.visible = fk; U.R.visible = !fk; U.F.scale.y = wk; }
   for (const [o, y, sy] of U.rise || []) { o.visible = k > .2 || dn; o.scale.y = wk; o.position.y = y + sy * wk / 2; }
   show(U.posts, !dn); show(U.late, k > .5); show(U.roof, k >= .85 && !dn); show(U.mast, k >= 1 && !dn);
   const st = dn ? 2 : S.os[e.id];
@@ -16601,10 +16676,18 @@ function gWorks(g, V, P) {
 }
 /* the economy's layer, from V.eco: the deposits (a double outline when rich, filled in the colour of whoever the viewer knows to mine it), the sites
    as glyphs (usina a circle E, mina a diamond M, fabrica a square F) with their health in an arc, dashed while built or when they are the
-   enemy's, a cross when down; with the labels on, the age of an enemy site and the output of an own one */
+   enemy's, a cross when down; with the labels on, the age of an enemy site and the output of an own one. The own seat town's lots (map
+   version 5): a faint dotted block with what it takes (F, E, AA) */
 function gRes(g, V, P) {
   const E = V.eco, k = P.k; if (!E || !E.sites) return;
   const dia = (x, y, s) => { g.beginPath(); g.moveTo(x, y - s); g.lineTo(x + s, y); g.lineTo(x, y + s); g.lineTo(x - s, y); g.closePath(); };
+  for (const l of S.T.lots || []) {
+    if (l.team !== V.t || !gOn(P, l.x, l.z, 40)) continue;
+    const c = Math.cos(l.a), s = Math.sin(l.a); g.beginPath();
+    [[-1, -1], [1, -1], [1, 1], [-1, 1]].forEach(([i, j], n) => { const u = i * l.w / 2, v = j * l.d / 2, x = P.X(l.x + u * c + v * s), y = P.Y(l.z - u * s + v * c); if (n) g.lineTo(x, y); else g.moveTo(x, y); });
+    g.closePath(); g.setLineDash([2, 3]); g.strokeStyle = 'rgba(236,230,214,.45)'; g.lineWidth = 1; g.stroke(); g.setLineDash([]);
+    if (GV.lab) gTxt(g, { fab: 'F', pow: 'E', aa: 'AA', dep: 'S' }[l.k], P.X(l.x), P.Y(l.z) + 3 * k, 8 * k, 'rgba(236,230,214,.55)', 'center');
+  }
   for (const d of E.dep) {
     if (!gOn(P, d.x, d.z, 30)) continue;
     const x = P.X(d.x), y = P.Y(d.z), s = 5 * k, c = d.by >= 0 ? gCol(V, d.by) : '#8d9693';

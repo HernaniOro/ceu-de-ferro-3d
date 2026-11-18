@@ -6,7 +6,7 @@
    trn (transport: the class trn, the sniper kits, and the messages board, seats, eject and cargo), cmd (the commander: the mortar kits,
    toss k 3 and 4, s on shot and aishot, and the message cmd), eco (the economy: eco, ecs, keep) and gen (the general: gen, glog, gclaim,
    gctl, gcmd, gask, gres; messages private to a side go only to that side's players, and cmd too) and sap (the sapper kits and the
-   messages mine, mboom and mreq). */
+   messages mine, mboom, mreq and dint). */
 const http = require('http'), fs = require('fs'), os = require('os'), path = require('path');
 const { WebSocketServer } = require('ws');
 

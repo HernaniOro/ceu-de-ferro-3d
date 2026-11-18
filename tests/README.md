@@ -11,6 +11,7 @@ node tests/bases.js         # bases de suprimento: onde pode, construção, kit 
 node tests/world.js         # casas, árvores, base e carcaças: o que para na parede, tabela de dano, estágios, colisão, visão, IA nas vilas (DRIVE=300)
 node tests/soak.js          # 10 min solo por época e classe (helicóptero com mouse e clássico), e batalha só de IA com o placar de quem matou quem (SECS=600; ERA=<época> roda só uma)
 node tests/relay.js         # servidor: cada mensagem nova ou alterada, incluídas as da conquista (cq), da requisição (req, reqa) e dos rádios (rad, rsp, rbe)
+node tests/resume-relay.js  resume-online.js   # partidas suspensas: o servidor guarda a última palavra do anfitrião, sala vazia suspende, quem volta retoma (Continuar) ou começa outra (Nova partida), GET /partidas, SUSPEND
 node tests/online.js        # anfitrião e dois convidados pelo servidor de verdade, numa porta própria (8093)
 node tests/world-online.js   # objetos do mundo pelo servidor de verdade: dano do convidado, quem entra depois, troca de anfitrião; com SERVER=<servidor antigo>, nada é danificado
 node tests/bases-online.js  # bases pelo servidor de verdade: pedido do convidado, estágios em todos, quem entra depois, entrada na base, carga do convidado, troca de anfitrião no meio da obra; BW=1 só mede o que o anfitrião envia numa batalha cheia

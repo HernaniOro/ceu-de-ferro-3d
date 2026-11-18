@@ -6,7 +6,8 @@
    trn (transport: the class trn, the sniper kits, and the messages board, seats, eject and cargo), cmd (the commander: the mortar kits,
    toss k 3 and 4, s on shot and aishot, and the message cmd), eco (the economy: eco, ecs, keep) and gen (the general: gen, glog, gclaim,
    gctl, gcmd, gask, gres; messages private to a side go only to that side's players, and cmd too) and sap (the sapper kits and the
-   messages mine, mboom, mreq and dint). */
+   messages mine, mboom, mreq and dint).
+   rs: a room whose last player leaves is suspended, not ended, and whoever comes back resumes it (snapIn, SUSPEND, GET /partidas). */
 const http = require('http'), fs = require('fs'), os = require('os'), path = require('path');
 const { WebSocketServer } = require('ws');
 
@@ -87,7 +88,7 @@ const scores = c => cast(c, { t: 'scores', players: [...c.room.values()].map(o =
 const aiEnt = (room, e, k) => Array.isArray(e) && aid(e[0]) && (e[2] === 0 || e[2] === 1) && (k === 2 ? e.length === 9 && e.every(num) && Number.isInteger(e[1]) && e[1] >= 0 && e[1] < room.inf.size && Number.isInteger(e[8]) && e[8] >= 0 && e[8] < 256
   : e.length === (k ? (room.gnd.has(e[1]) ? 14 : 0) : room.air.has(e[1]) ? 16 : 0) && e.every((v, i) => i === 1 || num(v)) && bits(e[e.length - 1]));
 const send = (ws, m) => { if (ws.readyState === 1) ws.send(JSON.stringify(m)); };
-const cast = (c, m, all) => { for (const o of c.room.values()) if (all || o !== c) send(o.ws, m); for (const o of c.room.specs || []) if (o !== c) sendSpec(o, m); };
+const cast = (c, m, all) => { snapIn(c, m); for (const o of c.room.values()) if (all || o !== c) send(o.ws, m); for (const o of c.room.specs || []) if (o !== c) sendSpec(o, m); };
 
 /* c→s messages. Every handler but join runs only for a client that is already in a room. */
 const RX = {
@@ -121,12 +122,16 @@ const RX = {
     const name = (typeof m.name === 'string' ? m.name.replace(/[\x00-\x1f\x7f]/g, '').trim().slice(0, 16).trim() : '') || 'Piloto';
     c.player = { id: nextId++, name, cls: m.cls, model: m.model, lo: load(m.cls, m.model, m.lo), kills: 0, deaths: 0, ai: 0 };
     const mv = int(m.mv, 1, 99) ? m.mv : 1;   // the map version of the page; the first player's is the room's
+    const sus = room.size === 0 && room.sus > Date.now() && m.fresh !== 1 && mv === room.snap.mv;   // a suspended match, taken up again
+    if (room.size === 0 && room.sus > 0 && !sus) snapDrop(room);   // or left for a new one ("Nova partida", or another map)
     if (room.size === 0) room.mv = mv;
     else if (mv !== room.mv && !(room.mv === 1 && m.mv1 === 1)) return send(c.ws, { t: 'error', code: 'map' });
     c.room = room; room.set(c.player.id, c); if (!room.host) { room.host = c; room.ff = 0; for (const g of room.gens) send(g.ws, { t: 'host', id: c.player.id }); }
-    send(c.ws, room.wf = { t: 'welcome', dr: 1, id: c.player.id, host: room.host.player.id, swap: 1, inf: 1, obj: 1, sup: 1, hl: 1, lo: 1, hlo: 1, trn: 1, cmd: 1, crew: 1, cap: 1, ms: 1, cq: 1, bld: 1, she: 1, civ: 1, eco: 1, gen: 1, gn: room.gen, gk: room.genk, cqn: room.cqn || 0, ff: room.ff || 0, mv: room.mv || 1, gc: 2, sap: 1, players: [...room.values()].map(o => o.player) });
+    if (sus) { clearTimeout(room.sut); room.sus = 0; }
+    send(c.ws, Object.assign({}, room.wf = { t: 'welcome', dr: 1, id: c.player.id, host: room.host.player.id, swap: 1, inf: 1, obj: 1, sup: 1, hl: 1, lo: 1, hlo: 1, trn: 1, cmd: 1, crew: 1, cap: 1, ms: 1, cq: 1, bld: 1, she: 1, civ: 1, eco: 1, gen: 1, gn: room.gen, gk: room.genk, cqn: room.cqn || 0, ff: room.ff || 0, mv: room.mv || 1, gc: 2, sap: 1, players: [...room.values()].map(o => o.player), rs: 1 }, sus && { host: 0, sus: 1 }));
     send(c.ws, { t: 'fcap', v: 1 });   // this server knows fort and fbuild (trenches and sandbags)
     send(c.ws, { t: 'dcap', v: 1 });   // and the longer damage model
+    if (sus) snapOut(c);   // a guest of the match that was, until the host message makes it the host: it adopts, as when a host leaves
     cast(c, { t: 'joined', player: c.player });
   },
   /* another vehicle in mid-match, of the room's era and of the side the player is on: the record changes in place and the room is told.
@@ -320,7 +325,7 @@ RX.cq = (c, m) => {
   if (!host(c) || !int(m.n, 0, 1e6) || (m.ph !== 0 && m.ph !== 1) || !num(m.T) || !vec(m.k, 2) || !num(m.k0) || !int(m.len, 0, 2) || !Array.isArray(m.p) || m.p.length > 64 || m.p.length % 4 || !m.p.every(v => int(v, -1000, 1000)) || !vec(m.l, 6)) return;
   const o = { t: 'cq', n: m.n, ph: m.ph, T: m.T, k: m.k, k0: m.k0, len: m.len, p: m.p, l: m.l };
   if (m.ph === 1 && vec(m.r, 2) && int(m.r[0], -1, 1) && int(m.r[1], 0, 3)) { o.r = m.r; o.w = num(m.w) ? m.w : 0; }
-  if (m.n !== (room.cqn || 0)) { room.cqn = m.n; room.keep = room.mines = null; for (const q of room.values()) q.player.kills = q.player.deaths = q.player.ai = 0; scores(c); }
+  if (m.n !== (room.cqn || 0)) { room.cqn = m.n; room.keep = room.mines = null; room.snap = snapNew(); for (const q of room.values()) q.player.kills = q.player.deaths = q.player.ai = 0; scores(c); }
   cast(c, o);
 };
 RX.req = (c, m) => {
@@ -413,7 +418,7 @@ const sideOf = o => (o.spec ? -1 : o.gen ? o.player.side : pside(o.room.models, 
 const ints = (l, n, k) => Array.isArray(l) && l.length <= n && l.length % k === 0 && l.every(v => Number.isInteger(v) && Math.abs(v) < 1e6);
 const txt = (v, n) => typeof v === 'string' && v.length <= n, rec = v => v === null || (typeof v === 'object' && !Array.isArray(v)), lst = (v, n) => Array.isArray(v) && v.length <= n;
 const members = room => [...room.values(), ...room.gens, ...room.specs];
-const castSide = (c, m, s, to) => { for (const o of members(c.room)) if (o !== c && (sideOf(o) === s || o.spec) && (!to || o.player.id === to)) send(o.ws, m); };   // a spectator is sent both sides
+const castSide = (c, m, s, to) => { snapIn(c, m); for (const o of members(c.room)) if (o !== c && (sideOf(o) === s || o.spec) && (!to || o.player.id === to)) send(o.ws, m); };   // a spectator is sent both sides
 const gctl = room => { for (const o of members(room)) send(o.ws, { t: 'gctl', g: room.gen, k: room.genk }); };
 const genFree = (room, c) => { let ch = false; for (const s of [0, 1]) if (room.gen[s] === c.player.id) { room.gen[s] = room.genk[s] = 0; ch = true; } if (ch) gctl(room); };
 RX.eco = (c, m) => {
@@ -520,7 +525,85 @@ RX.gres = (c, m) => {
   };
 }
 function mineKeep(room) { const K = room.mines, n = Math.ceil(K.e.length / 40) || 1; for (let i = 0; i < n; i++) send(room.host.ws, { t: 'mine', q: K.q, i, n, e: K.e.slice(i * 40, (i + 1) * 40), s: K.s }); }
+/* suspended matches (welcome says rs: 1). The battle lives in the host's browser, so the server keeps the last word of each kind the host
+   sent the room (snapIn: the ai rows, cq, the objects' stages, the buildings, bases, forts, eco, ecs, gen, glog, rad; keep is room.keep),
+   merged where the host sends only what changed. When the last player leaves, the match is suspended with its clock where it stood (no
+   host, nothing simulates) and the copy is kept SUSPEND s (default 900; 0 ends the match as before). A player who joins the empty room
+   in that time, with the same map and without fresh: 1 ("Nova partida"), is welcomed with host 0 and sus 1, is sent the copy as a guest
+   is sent the host's word (snapOut), then keep, the mines and host: the page adopts it, as when a host leaves. A new match (another cq n) or a
+   dropped copy starts it again. GET /partidas says, by era, what is suspended: { s: s left to resume, T: s on the match clock, n } or null */
+const SUSPEND = process.env.SUSPEND === undefined ? 900 : Math.max(0, +process.env.SUSPEND || 0), SNAPMEN = 4096, SNAPBLD = 1 << 18;
+function snapNew() { return { ai: [null, null], men: new Map(), menT: 0, menP: 0, cq: null, obj: new Map(), be: new Map(), bf: new Set(), bs: new Map(), bm: null, base: null, fort: [], fn: 0, eco: null, ecs: [null, null], gen: [null, null], glog: [[], []], gT: [0, 0], rad: null, mv: 0 }; }
+for (const era in rooms) Object.assign(rooms[era], { snap: snapNew(), sus: 0, sut: null });
+function snapIn(c, m) {
+  if (!c.room || !c.room.snap || c.room.host !== c) return;
+  const P = c.room.snap, now = Date.now();
+  switch (m.t) {
+    case 'ai':
+      if (m.k < 2) { P.ai[m.k] = m; break; }
+      for (const e of m.e) {   // the soldiers come a part at a time: a row stays while its part comes round, menP the ms that takes (a slow host is slower)
+        const r = P.men.get(e[0]), iv = r ? now - r.at : 0;
+        if (iv > 0 && iv < 30000) P.menP = P.menP ? P.menP * .8 + iv * .2 : iv;
+        if (r || P.men.size < SNAPMEN) P.men.set(e[0], { e, at: now });
+      }
+      P.menT = now; for (const [id, r] of P.men) if (now - r.at > Math.max(10000, 4 * P.menP)) P.men.delete(id);
+      break;
+    case 'obj': for (let i = 0; i + 1 < m.e.length; i += 2) P.obj.set(m.e[i], Math.max(P.obj.get(m.e[i]) || 0, m.e[i + 1])); break;
+    case 'bld':
+      if (m.e) for (let i = 0; i + 1 < m.e.length; i += 2) if (P.be.size < SNAPBLD || P.be.has(m.e[i])) P.be.set(m.e[i], m.e[i + 1]);
+      if (m.f) for (const b of m.f) P.bf.add(b);
+      if (m.s) for (let i = 0; i + 1 < m.s.length; i += 2) P.bs.set(m.s[i], m.s[i + 1]);
+      if (m.m) P.bm = m.m;
+      break;
+    case 'fort': if (m.n !== P.fn) { P.fort = []; P.fn = m.n; } P.fort[m.i] = m; break;
+    case 'ecs': case 'gen': P[m.t][m.s] = m; break;
+    case 'glog': {
+      const L = P.glog[m.s]; if (m.full === 1) L.length = 0;
+      L.push(...m.e); if (L.length > 80) L.splice(0, L.length - 80); P.gT[m.s] = m.T; break;
+    }
+    case 'cq': case 'base': case 'eco': case 'rad': P[m.t] = m; break;
+  }
+}
+/* the copy, to the one who resumes, in the order a joiner gets the host's word; its side's private word only */
+function snapOut(c) {
+  const room = c.room, P = room.snap, s = sideOf(c), to = m => send(c.ws, m), flat = (t, k, l, o) => { for (let i = 0; i < l.length; i += 200) to(Object.assign({ t, [k]: l.slice(i, i + 200) }, o)); };
+  if (P.base) to(P.base);
+  for (const m of P.fort) if (m) to(m);
+  flat('obj', 'e', [].concat(...[...P.obj].filter(e => e[1])), { full: 1 });
+  const bs = [].concat(...P.bs); for (let i = 0; i < bs.length; i += 120) to({ t: 'bld', s: bs.slice(i, i + 120), full: 1 });
+  flat('bld', 'f', [...P.bf], { full: 1 }); flat('bld', 'e', [].concat(...P.be), { full: 1 });
+  if (P.bm) to({ t: 'bld', m: P.bm });
+  for (const m of P.ai) if (m) to(m);
+  const men = [...P.men.values()].filter(r => P.menT - r.at < Math.max(2500, 1.5 * P.menP + 500)).map(r => r.e);
+  for (let i = 0; i < men.length; i += AICAP) to({ t: 'ai', k: 2, e: men.slice(i, i + AICAP) });
+  for (const m of [P.cq, P.eco, P.ecs[s], P.gen[s], P.rad]) if (m) to(m);
+  if (P.glog[s].length) to({ t: 'glog', s, T: P.gT[s], e: P.glog[s], full: 1 });
+  if (room.keep) to({ t: 'keep', e: room.keep });
+  if (room.mines) mineKeep(room);   // the mines, as to a next host: room.host is the resumer already
+  for (const o of members(room)) send(o.ws, { t: 'host', id: c.player.id });
+}
+/* the last player left: the match waits, unless there is nothing to keep or SUSPEND is 0 */
+function suspend(room) {
+  const P = room.snap;
+  if (!SUSPEND || !(P.cq || P.ai[0] || P.ai[1] || P.men.size || room.keep || room.mines)) return snapDrop(room);
+  P.mv = room.mv; room.sus = Date.now() + SUSPEND * 1000; clearTimeout(room.sut);
+  room.sut = setTimeout(() => { if (!room.size) snapDrop(room); }, SUSPEND * 1000); if (room.sut.unref) room.sut.unref();
+}
+/* the match is over for good: whoever comes next starts a new one, under a new number */
+function snapDrop(room) {
+  clearTimeout(room.sut); room.sut = null; room.keep = room.mines = room.mbuf = null; room.snap = snapNew();
+  if (room.sus) room.cqn = (room.cqn || 0) + 1;
+  room.sus = 0;
+}
+const partidas = () => {
+  const o = {}, now = Date.now();
+  for (const era in rooms) { const r = rooms[era], q = r.snap.cq; o[era] = r.sus > now && !r.size ? { s: Math.ceil((r.sus - now) / 1000), T: q ? q.T : 0, n: r.cqn || 0, ph: q ? q.ph : 0 } : null; }
+  return o;
+};
 const server = http.createServer((req, res) => {
+  if (req.method === 'GET' && req.url.split('?')[0] === '/partidas') {
+    res.writeHead(200, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store', 'access-control-allow-origin': '*' }); return res.end(JSON.stringify(partidas()));
+  }
   if (req.method !== 'GET' || req.url.split('?')[0] !== '/') { res.writeHead(404, { 'content-type': 'text/plain; charset=utf-8' }); return res.end('404'); }
   fs.readFile(PAGE, (err, buf) => {
     if (err) { res.writeHead(500, { 'content-type': 'text/plain; charset=utf-8' }); return res.end('Não foi possível ler a página do jogo.'); }
@@ -549,7 +632,7 @@ wss.on('connection', ws => {
     if (c.spec) { room.specs.delete(c); return; }
     if (c.gen) { room.gens.delete(c); return genFree(room, c); }
     room.delete(c.player.id); cast(c, { t: 'left', id: c.player.id }); genFree(room, c);
-    if (!room.size) room.keep = room.mines = null;
+    if (!room.size) suspend(room);
     if (room.size === 0) room.mv = 0;
     if (room.host !== c) return;
     room.host = room.values().next().value || null;

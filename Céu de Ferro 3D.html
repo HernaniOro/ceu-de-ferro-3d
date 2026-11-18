@@ -13473,6 +13473,7 @@ function sabStep() {
 /* ---------- the sapper's hands: the mines in the build mode, lifting, and sabotage ---------- */
 build = (g => (P, I, key, trig) => {
   const kd = P.kd || (P.kd = {}), vk = !!I.ordB && !kd.sapV; kd.sapV = !!I.ordB;
+  if (key && S.fm) { let n = S.fm.k + 1; while (FORT.K[n] && FORT.K[n].era && FORT.K[n].era !== S.era) n++; S.fm.k = n - 1; }   // N skips a work of the other era (the dome in 1944)
   if (!P.def.sap) { S.mm = null; return g(P, I, key, trig); }
   const a = S.aim, say = text => S.floats.push({ x: P.x + a.d.x * 3, y: P.y + 3, z: P.z + a.d.z * 3, text, life: 2.2 });
   if (S.mw && S.t > S.mw.T) { if (!mines().some(o => o.k === S.mw.k && hdist(o, S.mw) < 1)) { P.mn[S.mw.k]++; say('O anfitrião recusou a mina'); } S.mw = null; }
@@ -13575,7 +13576,7 @@ Net.rx.mreq = m => {
    (the box of the work itself is only its foot, foot m high).
    The dome (modern only): radar and interceptors. A howitzer, mortar or rocket round of the other side that will come down within r m of
    it is engaged on its way down, one every gap s from a magazine of mag that loads again one every load s; each shot costs mt metal when
-   the economy is on, and stops the round with chance pk (f.dk counts what it stopped) (the same roll on every client: it is drawn from the round's launch numbers). A
+   the economy is on, and stops the round with chance pk (f.ds counts its shots, f.dk what they stopped) (the same roll on every client: it is drawn from the round's launch numbers). A
    guided missile for the ground within r m is engaged where the match is simulated. The radar shows its side who fired (the shooter is
    spotted). cost: [en, mt] paid when the work starts, where the economy is on; a side short of them cannot start it.
    MLRS: a launcher's salvo goes on while the trigger is held; its tubes load again `fast` times faster with a truck of its side within truck m */
@@ -13603,10 +13604,11 @@ Object.assign(SARMS, {
   m2hb: { name: 'M2HB .50', rate: .1, dmg: 15, spd: 890, mag: 100, mags: 5, sp: .0045, rl: 6.5, auto: 1, lmg: 1 }, kord: { name: 'Kord 12,7', rate: .095, dmg: 15, spd: 860, mag: 50, mags: 8, sp: .0045, rl: 5, auto: 1, lmg: 1 } });
 const postGun = f => f.F.gun && SARMS[f.F.gun[S.era][S.fac[f.team]]];
 const postArm = d => ({ d, mag: d.mag || 1, res: d.k ? d.n - 1 : d.mags, cool: 0, rl: 0, t: -9, lock: null, lockT: 0 });
-/* a dome only in its era; a post the side cannot pay for */
+/* a dome only in its era; no post online with a server that does not carry them (sap); a post the side cannot pay for */
 fortWhy = (g => (k, t, x, z, a, pre) => {
   const F = FORT.K[k];
   if (F && F.era && F.era !== S.era) return 'era';
+  if (k >= 3 && S.net && !Net.sap) return 'server';
   const w = g(k, t, x, z, a, pre); if (w || pre || !F || !F.cost || !ecoSim() || !S.eco.d[t]) return w;
   const d = S.eco.d[t]; return d.en < F.cost[0] || d.mt < F.cost[1] ? 'cost' : '';
 })(fortWhy);
@@ -13677,6 +13679,14 @@ function postFree(m) {
   m.w = m.ctl.w = Math.min(p.w || 0, m.arms.length - 1); m.pa = null;
   for (const f of S.forts) if (f.gm === m) f.gm = null;
 }
+/* who mans a post stays at its gun and over its wall: kneeling at the least, never stalking off with it */
+manThink = (g => m => {
+  g(m);
+  const f = m.pa && m.fc, A = m.ai;
+  if (!f || !A || f.gm !== m) return;
+  const p = postSlots(f, 1)[0];
+  A.gx = p.x; A.gz = p.z; A.run = false; if (A.st === 2) A.st = 1;
+})(manThink);
 /* the dome, each step */
 const dRoll = b => { const v = Math.sin(b.x * 12.9898 + b.z * 78.233 + b.vx * 37.719 + b.vz * 11.131 + b.vy * 3.17) * 43758.5453; return v - Math.floor(v); };
 function domeStep(dt) {
@@ -13692,13 +13702,14 @@ function domeStep(dt) {
       if (!pay()) { b.dj = 1; continue; }
       b.dj = 1; f.dm--; f.dn = S.t + D.gap;
       if (b.by && b.by.team !== f.team) { b.by.seenT = S.t; if (b.by.sx !== undefined) { b.by.sx = b.by.x; b.by.sz = b.by.z; } }
+      f.ds = (f.ds || 0) + 1;
       if (dRoll(b) < D.pk) { b.gone = true; f.dk = (f.dk || 0) + 1; blastFx(b.x, b.y, b.z, 5); if (S.my && hdist(S.my, f) < D.r) S.floats.push({ x: b.x, y: b.y, z: b.z, text: 'interceptado', life: 1.4 }); }
     }
     if (!sim) continue;
     for (const m of S.missiles) {
       if (m.gone || m.dj || m.team === f.team || !(m.target && !m.target.plane && (m.target.kind || m.target.man || m.target.gnd)) || hdist(m, f) > D.r || f.dm < 1 || S.t < f.dn) continue;
       if (!pay()) { m.dj = 1; continue; }
-      m.dj = 1; f.dm--; f.dn = S.t + D.gap;
+      m.dj = 1; f.dm--; f.dn = S.t + D.gap; f.ds = (f.ds || 0) + 1;
       if (Math.random() < D.pk) { f.dk = (f.dk || 0) + 1; intercept(m, { me: false, team: f.team }); }
     }
   }

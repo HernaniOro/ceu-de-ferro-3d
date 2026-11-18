@@ -101,6 +101,13 @@ function salvo(c, S, p, n) {
   const own = salvo(C, S, p, 1).L[0]; own.team = 0; C.run(60); ok(!own.dj, 'it lets its own side\'s rounds through');
 }
 {
+  fresh('modern'); const p = flat(3), D = build(6, 0, p.x, p.z, 0);
+  const tk = C.addUnit('tank', 0, p.x + 40, p.z, S.E.sides[0].tanks[1], true); tk.ai = null;
+  const at = C.addMan($('INF').modern[1][0], 1, p.x + 700, p.z, 0); at.ai = null; const atSeen = at.seenT, e = $('manEye')(at);
+  const ms = $('MSHOT').atgm(at, SARMS.kornet, e, $('vnorm')({ x: tk.x - e.x, y: 0, z: tk.z - e.z }), tk); C.run(1);
+  ok(ms.dj && at.seenT > atSeen, 'a guided missile fired at its side within its radius is engaged, and its radar shows who fired it too');
+}
+{
   const E = H.load({ seed: 6, eco: true }), S3 = ecoState(E, 'modern'); S = S3; T = S3.T;
   const p = flat(3, E), d = S3.eco.d[0]; d.en = 1000; d.mt = 1000; const D = build(6, 0, p.x, p.z, 0, E); d.mt = POSTS.dome.mt * 3 + 5;
   const r = salvo(E, S3, p, 10); E.run(60);

@@ -92,6 +92,19 @@ const tap = async (c, k) => { c.S.input[k] = true; await run(.06); c.S.input[k] 
   const hs = set(host, HL), gs = set(g1, GL), n = hs ? hs.split(',').length : 0;
   console.log('   the dome stopped ' + n + ' of 40 on the host (' + dome.ds + ' engaged); the guest stopped [' + gs + '], the host [' + hs + ']');
   ok(built && n >= 10 && n < 40 && gs === hs, 'a BM-21 salvo of 40 at a dome with a magazine of ' + POSTS.dome.mag + ': it is saturated, and the guest stops the very same rounds the host does');
+  /* a round a guest (side 1) fires flies on his client ahead of the host's copy: the dome engages it only with time left for its word to
+     reach him first; with its one interceptor held back to the last 0.6 s it lets the round fall everywhere, at 1.5 s it stops it everywhere */
+  await run(15); POSTS.dome.pk = 1;
+  const late = async (lead, at) => {
+    const lx2 = dome.x + sg * 3000, ly2 = host.hgt(lx2, dome.z) + 4, a = [R(lx2), R(ly2), R(dome.z), R(-sg * 3000 / 24.5), 120, 0], by = { team: 1, x: lx2, y: ly2, z: dome.z };
+    const b2 = g2.lob(by, w, ...a); await run(lead); const bh = host.lob(by, w, ...a), b1 = g1.lob(by, w, ...a);
+    let rel = false;
+    await run(bh.T + 2, () => { if (!rel && bh.T - bh.t <= at) { rel = true; dome.dm = 1; dome.dn = 0; } else if (!rel) { dome.dm = 0; dome.dl = 0; } });
+    return [host, g1, g2].map((c, i) => stopped(c, [bh, b1, b2][i]));
+  };
+  const L1 = await late(.7, .6), L2 = await late(.3, 1.5);
+  console.log('   a guest\'s round, the dome free at 0.6 s to go: stopped on host, g1, g2 ' + L1.join() + '; at 1.5 s: ' + L2.join());
+  ok(L1.every(v => !v) && L2.every(v => v), 'a guest\'s round is stopped on every client or on none: never stopped on the host after it burst on its shooter\'s client');
   /* the host leaves: the next one (g1, side 0) keeps the other side's mine it was never told of, sends it on to that side, and gives out no id used before */
   const hid = host.$('mineLay')(0, 1, p.x + 40, p.z - 60), used = Math.max(m0.id, ap.id, hid ? hid.id : 0), has = (c, o) => !!o && (c.S.mines || []).some(q => q.id === o.id && !q.gone);
   const sent = await until(() => has(g2, hid) && has(g3, hid));

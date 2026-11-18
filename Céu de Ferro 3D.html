@@ -13577,7 +13577,7 @@ Net.rx.mreq = m => {
    The tower: a soldier of its side who steps within ladder m of its footprint climbs onto its platform, eye m up, and comes down when he steps off it
    (the box of the work itself is only its foot, foot m high).
    The dome (modern only): radar and interceptors. A howitzer, mortar or rocket round of the other side that will come down within r m of
-   it is engaged on its way down, one every gap s from a magazine of mag that loads again one every load s; each shot costs mt metal when
+   it is engaged on its way down, while it has left s of flight still to go (time for the host's word to reach every copy of it), one every gap s from a magazine of mag that loads again one every load s; each shot costs mt metal when
    the economy is on, and stops the round with chance pk (f.ds counts its shots, f.dk what they stopped). Only where the match is simulated
    (solo, the host) does a dome engage anything; online the host tells the room each round it engaged (dint: f the dome, k the round's
    key, s 1 stopped), and a guest applies that to its own copy of the round. A round's key (b.rk) is drawn from its launch numbers, which
@@ -13591,7 +13591,7 @@ const POSTS = {
     gun: { ww2: ['mg42p', 'm1919'], modern: ['m2hb', 'kord'] } },
   twr: { k: 5, name: 'Torre de sniper', obj: 'tower', size: [3, 3, 1], eye: 10.5, ladder: 2.5, foot: 1, time: 40, cap: 2, put: [5, 9], pad: .8, road: 9, min: 1, near: .5, back: 0, conceal: .55, pitch: 3, cost: [20, 30], garr: ['snp'] },
   dome: { k: 6, name: 'Cúpula antifoguete', obj: 'dome', size: [8, 8, 4.5], time: 150, cap: 2, put: [8, 14], pad: 1, road: 12, min: 1, near: 2, back: 0, conceal: 0, pitch: 4, era: 'modern', cost: [300, 400], garr: [],
-    r: 2000, pk: .75, mag: 20, gap: .25, load: 3, mt: 15, low: 40 } };
+    r: 2000, pk: .75, mag: 20, gap: .25, load: 3, mt: 15, low: 40, left: 1 } };
 POSTS.room = 2 * (POSTS.atp.cap * POSTS.atp.garr.length + POSTS.mgn.cap * POSTS.mgn.garr.length + POSTS.twr.cap * POSTS.twr.garr.length);
 const POSTK = [POSTS.atp, POSTS.mgn, POSTS.twr, POSTS.dome];
 for (const F of POSTK) FORT.K[F.k] = F;
@@ -13702,9 +13702,9 @@ const rKey = b => { let h = 0; for (const v of [b.x, b.y, b.z, b.vx, b.vy, b.vz]
 lob = (g => (...a) => rKey(g(...a)))(lob);
 mortRound = (g => (...a) => rKey(g(...a)))(mortRound);
 /* a round the dome engaged: the shooter shown to its side, and stopped or let through */
+const domeSee = (f, o) => { if (o && o.team !== f.team) { o.seenT = S.t; if (o.sx !== undefined) { o.sx = o.x; o.sz = o.z; } } };
 function domeHit(f, b, stop) {
-  b.dj = 1; f.ds = (f.ds || 0) + 1;
-  if (b.by && b.by.team !== f.team) { b.by.seenT = S.t; if (b.by.sx !== undefined) { b.by.sx = b.by.x; b.by.sz = b.by.z; } }
+  b.dj = 1; f.ds = (f.ds || 0) + 1; domeSee(f, b.by);
   if (!stop) return;
   b.gone = true; f.dk = (f.dk || 0) + 1; blastFx(b.x, b.y, b.z, 5);
   if (S.my && hdist(S.my, f) < POSTS.dome.r) S.floats.push({ x: b.x, y: b.y, z: b.z, text: 'interceptado', life: 1.4 });
@@ -13722,7 +13722,7 @@ function domeStep(dt) {
     if (f.dm < D.mag && (f.dl += dt) >= D.load) { f.dl = 0; f.dm++; }
     const pay = () => { if (!ecoSim() || !S.eco.d[f.team]) return true; const d = S.eco.d[f.team]; if (d.mt < D.mt) return false; d.mt -= D.mt; return true; };
     for (const b of S.bombs) {
-      if (b.k !== 'he' || b.gone || b.dj || b.team === f.team || b.px === undefined || Math.hypot(b.px - f.x, b.pz - f.z) > D.r || b.t < b.T * .5 || b.y - hgt(b.x, b.z) < D.low) continue;
+      if (b.k !== 'he' || b.gone || b.dj || b.team === f.team || b.px === undefined || Math.hypot(b.px - f.x, b.pz - f.z) > D.r || b.t < b.T * .5 || b.T - b.t < D.left || b.y - hgt(b.x, b.z) < D.low) continue;
       if (f.dm < 1 || S.t < f.dn) continue;
       if (!pay()) { b.dj = 1; continue; }
       f.dm--; f.dn = S.t + D.gap;
@@ -13732,7 +13732,7 @@ function domeStep(dt) {
     for (const m of S.missiles) {
       if (m.gone || m.dj || m.team === f.team || !(m.target && !m.target.plane && (m.target.kind || m.target.man || m.target.gnd)) || hdist(m, f) > D.r || f.dm < 1 || S.t < f.dn) continue;
       if (!pay()) { m.dj = 1; continue; }
-      m.dj = 1; f.dm--; f.dn = S.t + D.gap; f.ds = (f.ds || 0) + 1;
+      m.dj = 1; f.dm--; f.dn = S.t + D.gap; f.ds = (f.ds || 0) + 1; domeSee(f, m.by);
       if (Math.random() < D.pk) { f.dk = (f.dk || 0) + 1; intercept(m, { me: false, team: f.team }); }
     }
   }

@@ -29310,7 +29310,7 @@ function stkFx(x, y, z, r) {
   if (d < 9000) fx.boom(r * 2, Math.min(3400, d * .4));
   const L = S.craters || (S.craters = []);
   L.push({ x, z, r: Math.min(F.crater[1], r * F.crater[0]), m: null });
-  if (L.length > F.keep) { const c = L.shift(); if (c.m) kill(c.m); }
+  if (L.length > F.keep) L.shift();   // its mesh (c.m) goes with the view's next stkScene: the sim names nothing of the view
 }
 /* ---- each step where the battle is simulated: a strike ends when nothing of it is left ---- */
 function stkStep() {
@@ -36754,6 +36754,7 @@ function stkScene() {
     }
     g.position.set(c.x, y0, c.z); STK.g.add(g); c.m = g;
   }
+  for (const m of STK.g.children.slice()) if (!(S.craters || []).some(c => c.m === m)) kill(m);   // a crater the battle let go (more than STK's keep)
 }
 syncScene = (g => dt => { g(dt); try { stkScene(); } catch (e) { /* a crater that would not draw: the battle goes on */ } })(syncScene);
 /* ---- the General's view: Campanha, the strike button (a click on the map) and the list of the side's strikes ---- */

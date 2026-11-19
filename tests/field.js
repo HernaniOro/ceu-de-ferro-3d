@@ -53,6 +53,7 @@ console.log('-- the planner refills a post --');
 for (const bases of [false, true]) { const C = H.load({ seed: 9 }), $ = C.$; if (!bases) C.planSup = () => {}; const S = solo(C, 'ww2'), F = $('FIELD'), q = S.squads.find(q => q.team === 0 && q.job === 'line' && q.jk === 0), post = { x: q.ord.x, z: q.ord.z };
   C.run(bases ? 60 : 1, () => { park(S); calm(S); });
   for (const m of q.men) C.killMan(m, null);
+  if (bases) $('IAI').cap += 10;   // room under the side's cap for the refill: whether other men fall meanwhile (the drills keep more of them alive) is not the point
   const t0 = S.t; let tT = -1, tU = -1, tG = -1, tr = null, far = 0, nq = null;
   C.run(900, () => { park(S); calm(S); if (!nq) nq = S.squads.find(x => x !== q && x.team === 0 && x.job === 'line' && x.jk === 0) || null; if (nq && tU < 0) tU = S.t - t0;
     if (!tr) { tr = S.units.find(u => u.fld && u.team === 0 && u.job === 'line'); if (tr) { tT = S.t - t0; far = Math.abs(tr.s - q.ord.s); } } else if (tG < 0 && tr.gone) tG = S.t - t0; return !(nq && nq.at && (!tr || tG >= 0)); });
@@ -68,7 +69,7 @@ console.log('-- conquest: the director reinforces, losses cost tickets, the poin
   ok(col() >= 2 && !S.units.some(u => u.team === 1 && u.kind === 'tank' && !u.dead), 'the director sent the next column within ' + ($('DIR').col + 5) + ' s (' + col() + ' vehicles), without the tanks, whose replacement waits ' + K.ai.tank + ' s');
   const P = Q.p, n = P.find(p => p.hold < 0), b = P.find(p => p.base === 1), far = P.find(p => p.hold === 1 && p.base < 0 && !p.links.some(i => P[i].hold === 0));
   ok(P.length === 7 && P.filter(p => p.hold === 0).length === 3 && P.filter(p => p.hold === 1).length === 3 && !!n && $('towns')().length === 2, 'seven points in 1944: three a side and ' + n.L + ' ' + n.name + ' neutral; ' + P.map(p => p.L + ' ' + p.name).join(', '));
-  S.units = []; S.men = []; S.squads = []; C.director = () => {}; C.plan = () => {};
+  S.units = []; S.men = []; S.squads = []; C.director = () => {}; C.plan = () => {}; for (const p of S.planes) if (p !== S.my) p.gone = true;   // the point alone: no jet strafing the soldiers in it
   const man = (t, p, dx) => C.addMan($('INF').ww2[S.fac[t]][0], t, p.x + dx, p.z, 0); let m = man(0, n, 5); n.c = 0; C.run(K.t + 2, () => park(S));
   ok(n.hold === 0, 'one soldier alone in the neutral point takes it in ' + K.t + ' s');
   const e = man(1, n, -5); C.run(20, () => park(S)); ok(n.hold === 0 && n.c === -1 && n.w[0] === 1 && n.w[1] === 1, 'with one of each side in it nothing moves');

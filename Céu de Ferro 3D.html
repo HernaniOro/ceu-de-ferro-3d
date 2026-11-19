@@ -24253,11 +24253,16 @@ function buildWorld() {
    mid m; far: an impostor, a picture of the full tree drawn once at load, turned to the eye, out to the fog (no felled tree there).
    Each band gives way to the next over fade m by a dither, so that nothing pops. Two kinds: a conifer and a broadleaf, as the map has
    them (o.v, map version 6), or on an older map by the tree's id (conifer: their share), each turned and widened a little by its id; wind: how far the crowns and the grass sway.
-   shadow: a soft dark patch on the ground under each standing near and mid tree, laid on the slope.
+   shadow: a soft dark patch on the ground under each standing near and mid tree, laid on the slope; where the quality draws the sun's
+   real shadows (GFXQ[].shadow, Alta) the near trees cast those instead, their cards cut out as drawn. The trees and the grass take the
+   ground's sober tone (ENVL.sat and tone: the grass all of it, the trees treeSat of it), and the haze of the sky reads the eye.
    grass: clumps of blades within grass m of the eye, all of them near it and fewer toward the edge, coloured as the ground under them;
    none on water, sand, roads, in streets and houses; a field grows its crop (crop: taller), a wood an undergrowth (wood: its share);
-   chunk: m of a square of grass made at once, at most `make` a frame, nearest first. None of it is drawn when the eye is higher above the
-   ground than near half of grass m.
+   chunk: m of a square of grass made at once, at most `make` a frame, nearest first. The grass sinks into the ground as the eye climbs
+   from .3 to .45 of grass m above it, and is not drawn higher; below 1.5 of it the chunks are still made, hidden, so that none is
+   missing when it grows back. Nothing grows in in view: the first frame of a world (the camera on the player, before anything of the
+   match is shown) makes everything round the eye at once and compiles every shader (vegWarm), and so does a jump of the eye of more
+   than jump m in a frame (a respawn, another seat or camera).
    Q: the levels, one for each graphics quality the player picks in the hangar (gfxLevel(): 0 Baixa, 1 Média, 2 Alta, read when the
    world is built; mid where the page has no such choice); vegSet(level) fixes one. styles: the looks to choose from (dens: the grass,
    tall: its height, conifer: the share of conifers on a map without its own broadleaves, tip: the grass's tips, wind: its share of the
@@ -24274,7 +24279,7 @@ const VEG = {
     mista: { conifer: .5, dens: 1, tall: 1, tip: 0x9fb052, wind: 1 },
     folhosa: { conifer: .2, dens: 1.35, tall: 1.2, tip: 0x8fb848, wind: 1.1 }
   },
-  cell: 128, move: 10, every: .3, nearMax: 3000, midMax: 9000, wind: .5, wood: .25, crop: 1.5, chunk: 24, make: 2, grid: .55
+  cell: 128, move: 10, every: .3, nearMax: 3000, midMax: 9000, wind: .5, wood: .25, crop: 1.5, chunk: 24, make: 2, grid: .55, jump: 80, treeSat: .6
 };
 const VS = { built: null, atlas: null, imp: null, base: null };
 /* the picture the cards are cut from: a spruce frond, a bunch of leaves, bark and dark foliage, drawn by hand on a canvas */
@@ -24322,7 +24327,7 @@ function vegAtlas() {
 /* the regions of the atlas, as [u0, v0, u1, v1] (v up) */
 const VUV = { frond: [0, 1 - 448 / 512, .5, 1], leaf: [.5, 1 - 448 / 512, 1, 1], bark: [0, 0, .5, 64 / 512], dark: [.5, 0, 1, 64 / 512] };
 /* a tree's geometry, in the frame of the old cone (28 high, its foot 2 under the ground, so treeAt() stands and fells it as before):
-   kind 0 a conifer, 1 a broadleaf; lod 0 full, 1 a few large cards. Attributes: position, normal (round the crown, so that it is lit as a
+   kind 0 a conifer, 1 a broadleaf; lod 0 full, 1 a few large cards round the same dark core. Attributes: position, normal (round the crown, so that it is lit as a
    volume), uv into the atlas, color (darker inside and below) */
 function vegTreeGeo(kind, lod, cards) {
   const P = [], N = [], U = [], C = [], I = []; let sd = 11 + kind * 7 + lod * 3; const r = () => (sd = (Math.imul(sd, 1664525) + 1013904223) >>> 0) / 4294967296;
@@ -24343,8 +24348,8 @@ function vegTreeGeo(kind, lod, cards) {
   };
   if (!kind) {   // a spruce: a trunk to the top, tiers of drooping fronds round it, a dark core so that one does not see through it
     cyl(v3(0, -12.5, 0), v3(0, 13.5, 0), .62, .08, lod ? 4 : 7, VUV.bark, .55, .9);
-    if (!lod) cyl(v3(0, -4.5, 0), v3(0, 12.5, 0), 2.6, .3, 6, VUV.dark, .45, .8);
-    const tiers = Math.round((lod ? 5 : 11) * cards);
+    cyl(v3(0, -4.5, 0), v3(0, 12.5, 0), lod ? 3.2 : 2.6, .3, lod ? 5 : 6, VUV.dark, .45, .8);
+    const tiers = Math.round((lod ? 6 : 11) * cards);
     for (let t = 0; t < tiers; t++) {
       const f = t / (tiers - 1), y = -5 + 18.5 * f, R = (lod ? 6.9 : 6.4) * Math.pow(1 - f, .85) + .9, m = Math.max(3, Math.round((lod ? 4 : 5 + 4 * (1 - f)) * Math.min(1.3, cards))), a0 = r() * 6.3;
       for (let i = 0; i < m; i++) {
@@ -24379,7 +24384,7 @@ const VU = { uTime: { value: 0 }, uWind: { value: .5 }, uEye: { value: null } };
 function vegMat(o) {
   const m = new THREE.MeshLambertMaterial({ color: o.color || 0xffffff, map: o.map || null, vertexColors: true, side: THREE.DoubleSide, alphaTest: o.map ? .42 : 0 });
   m.userData.band = { value: new THREE.Vector4(-2, -1, 1e9, 2e9) };
-  const key = 'veg-' + o.kind;
+  const tn = o.kind === 'grass' ? null : vegTone(), ts = tn ? 1 - (1 - tn.sat) * VEG.treeSat : 1, key = 'veg-' + o.kind + (tn ? '-' + ts.toFixed(3) + '-' + tn.tone.toFixed(3) : '');
   m.customProgramCacheKey = () => key;
   m.onBeforeCompile = sh => {
     sh.uniforms.uTime = VU.uTime; sh.uniforms.uWind = VU.uWind; sh.uniforms.uBand = m.userData.band; sh.uniforms.uEye = VU.uEye;
@@ -24388,9 +24393,10 @@ function vegMat(o) {
     if (o.normal) vs = vs.replace('#include <beginnormal_vertex>', '#include <beginnormal_vertex>\n' + o.normal);
     if (o.color2) vs = vs.replace('#include <fog_vertex>', '#include <fog_vertex>\n' + o.color2);   // after the vertex's own values are made
     sh.vertexShader = vs;
-    let fs = 'varying float vFade, vAk;\n' + sh.fragmentShader;
+    let fs = 'varying float vFade, vAk; uniform vec3 uEye;\n#define cameraPosition uEye\n' + sh.fragmentShader;
     fs = fs.replace('( gl_FrontFacing ) ? vIndirectFront : vIndirectBack', 'vIndirectFront').replace('( gl_FrontFacing ) ? vLightFront : vLightBack', 'vLightFront');
     fs = fs.replace('#include <clipping_planes_fragment>', '#include <clipping_planes_fragment>\n float ign = fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(.06711056, .00583715))));\n if (vFade >= 0.0 ? ign > vFade : ign < -vFade) discard;');
+    if (tn) fs = fs.replace('#include <color_fragment>', '#include <color_fragment>\n diffuseColor.rgb = mix(vec3(dot(diffuseColor.rgb, vec3(.3, .59, .11))), diffuseColor.rgb, ' + ts.toFixed(3) + ') * ' + tn.tone.toFixed(3) + ';');   // the ground's sober tone, a little less of it
     if (o.map) fs = fs.replace('#include <alphatest_fragment>', ' diffuseColor.a *= vAk;\n#include <alphatest_fragment>');
     sh.fragmentShader = fs;
   };
@@ -24462,9 +24468,14 @@ function vegBake(geos) {
 })();
 /* the level drawn: a fixed one, or the graphics quality's */
 function vegLevel() {
-  const g = !VEG.fixed && typeof gfxLevel === 'function' ? ['low', 'mid', 'high'][gfxLevel()] : null;
-  return g || VEG.q;
+  if (VEG.fixed || typeof gfxLevel !== 'function') return VEG.q;
+  if (typeof gfxAuto === 'function') gfxAuto();   // the first world's pick by the video card, made before it is read
+  return ['low', 'mid', 'high'][gfxLevel()] || VEG.q;
 }
+/* the sun's real shadows near the eye (the Alta quality), 0 without them; the ground's tone (how much of its colours' saturation it keeps,
+   how bright), so that the grass is of the ground it grows on */
+const vegSun = () => typeof GFXQ === 'object' && typeof gfxLevel === 'function' && GFXQ[gfxLevel()] ? GFXQ[gfxLevel()].shadow || 0 : 0;
+const vegTone = () => typeof ENVL === 'object' && ENVL ? { sat: ENVL.sat, tone: ENVL.tone } : { sat: 1, tone: 1 };
 /* a level of VEG.Q fixed from here on, and the scene made again with it */
 function vegSet(level) {
   if (!VEG.Q[level]) return false;
@@ -24515,6 +24526,14 @@ function vegBuild() {
     me.count = 0; me.frustumCulled = false; scene.add(me); return me;
   };
   V.near = [0, 1].map(k => mk(V.geo[k][0], VEG.nearMax, 'near'));
+  V.sun = vegSun();
+  if (V.sun) {
+    const dm = new THREE.MeshDepthMaterial({ depthPacking: THREE.RGBADepthPacking, map: atlas, alphaTest: .42, side: THREE.DoubleSide });
+    dm.customProgramCacheKey = () => 'veg-depth';
+    dm.onBeforeCompile = sh => { sh.uniforms.uTime = VU.uTime; sh.uniforms.uWind = VU.uWind; sh.vertexShader = 'uniform float uTime, uWind;\n' + sh.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\n' + VWIND); };
+    for (const me of V.near) { me.castShadow = true; me.customDepthMaterial = dm; }
+    V.depth = dm;
+  }
   V.mid = [0, 1].map(k => mk(V.geo[k][1], VEG.midMax, 'mid'));
   /* shadows: a soft round patch laid on the ground, a little toward the far side from the sun */
   {
@@ -24547,7 +24566,7 @@ function vegBuild() {
   vegBands(V);
   /* the grass */
   vegGrassInit(V);
-  V.t = 0; V.eye = new THREE.Vector3(1e9, 0, 0);
+  V.t = 0; V.eye = new THREE.Vector3(1e9, 0, 0); V.last = new THREE.Vector3(); V.warm = false;
   vegSync(V); vegPick(V);
 }
 /* the bands of each mesh as uniforms */
@@ -24562,6 +24581,7 @@ function vegDrop() {
   const V = VS.built; VS.built = null; if (!V) return;
   V.restore(); for (const me of V.src) me.visible = true;
   for (const me of [...V.near, ...V.mid, V.shadow, V.imp]) { if (me.parent) me.parent.remove(me); me.material.dispose(); if (me !== V.near[0] && me !== V.near[1] && me !== V.mid[0] && me !== V.mid[1]) me.geometry.dispose(); }
+  if (V.depth) V.depth.dispose();
   V.geo.flat().forEach(g => g.dispose());
   if (V.g) { for (const ch of V.g.chunks.values()) { if (ch.me.parent) ch.me.parent.remove(ch.me); ch.geo.dispose(); } V.g.mat.dispose(); V.g.base.dispose(); }
 }
@@ -24599,7 +24619,7 @@ function vegPick(V) {
     const sp = V.sp[i];
     if (d2 < n2 && nn[sp] < VEG.nearMax) put(NA[sp], NC[sp], nn[sp]++, i);
     if (d2 > m2 && mm[sp] < VEG.midMax) put(MA[sp], MC[sp], mm[sp]++, i);
-    if (Q.shadow && V.up[i] && d2 < s2 && sn < VEG.nearMax + VEG.midMax) { const a = sn++ * 16, b = i * 16; for (let jj = 0; jj < 16; jj++) SA[a + jj] = V.SM[b + jj]; }
+    if (Q.shadow && !V.sun && V.up[i] && d2 < s2 && sn < VEG.nearMax + VEG.midMax) { const a = sn++ * 16, b = i * 16; for (let jj = 0; jj < 16; jj++) SA[a + jj] = V.SM[b + jj]; }
   }
   for (const sp of [0, 1]) {
     const a = V.near[sp], b = V.mid[sp];
@@ -24629,16 +24649,18 @@ function vegGrassInit(V) {
   const Q = V.Q; if (!Q.grass) return;
   const T = S.T, N1 = T.N + 1, c = new THREE.Color();
   const G = (V.g = { chunks: new Map(), free: [], col: new Float32Array(N1 * N1 * 3), dens: new Float32Array(N1 * N1), tall: new Float32Array(N1 * N1), R: Q.grass });
-  const tip = new THREE.Color(V.St.tip);
+  const tip = new THREE.Color(V.St.tip), Tn = vegTone(), tone = cc => { const l = cc.r * .3 + cc.g * .59 + cc.b * .11; return cc.setRGB((l + (cc.r - l) * Tn.sat) * Tn.tone, (l + (cc.g - l) * Tn.sat) * Tn.tone, (l + (cc.b - l) * Tn.sat) * Tn.tone); };
+  tone(tip);
   for (let k = 0; k < N1 * N1; k++) {
     const x = T.x0 + (k % N1) * T.cx, z = T.z0 + ((k / N1) | 0) * T.cz, h = T.h[k], kd = T.kind[k];
-    groundColor(k, x, z, c); G.col.set([c.r, c.g, c.b], k * 3);
+    groundColor(k, x, z, c); tone(c); G.col.set([c.r, c.g, c.b], k * 3);
     G.dens[k] = h < T.WL + 4 ? 0 : kd === 1 ? VEG.wood : kd === 8 ? .55 : kd === 9 ? .7 : h > 600 ? .3 : 1;
     G.tall[k] = kd >= 2 && kd <= 4 ? VEG.crop : kd === 8 ? .5 : kd === 1 ? .8 : 1;
   }
   G.base = vegClump(6);
   G.mat = vegMat({ kind: 'grass', head: 'attribute vec4 gp; attribute vec4 gc; attribute float gh; varying vec3 vGc;\n',
     vert: 'float gd = distance(gp.xz, uEye.xz); float gk = 1.0 - smoothstep(uBand.z * .55, uBand.z, gd) * step(gp.w - floor(gp.w), 2.0);\n' +
+      ' gk *= 1.0 - smoothstep(uBand.z * .3, uBand.z * .45, uEye.y - gp.y);\n' +
       ' float gs = gc.w * gk; float ga = gp.w * 6.2832; vec3 p = position; p.xz = mat2(cos(ga), -sin(ga), sin(ga), cos(ga)) * p.xz; p.y *= gs; p.xz *= .5 + .5 * gk;\n' +
       ' float gw = (sin(uTime * 1.9 + gp.x * .31 + gp.z * .23) + .5 * sin(uTime * 3.7 + gp.x * .9 - gp.z * .4)) * uWind;\n' +
       ' p.x += gw * .32 * gh * gh * gs; p.z += gw * .2 * gh * gh * gs;\n' +
@@ -24691,11 +24713,11 @@ function vegChunk(V, ci, cj) {
   return ch;
 }
 /* each frame: the chunks round the eye kept, the missing ones made nearest first, the far ones drawing fewer clumps */
-function vegGrass(V) {
+function vegGrass(V, all) {
   const G = V.g; if (!G) return;
-  const cp = camera.position, R = G.R, CS = VEG.chunk, high = cp.y - hgt(cp.x, cp.z) > R * .45;
+  const cp = camera.position, R = G.R, CS = VEG.chunk, h = cp.y - hgt(cp.x, cp.z), high = h > R * .45;
   for (const ch of G.chunks.values()) ch.me.visible = !high && ch.m > 0;
-  if (high) return;
+  if (h > R * 1.5) return;   // lower than this the chunks are kept (hidden while high), so that none is missing as the grass grows back
   const i0 = Math.floor((cp.x - R) / CS), i1 = Math.floor((cp.x + R) / CS), j0 = Math.floor((cp.z - R) / CS), j1 = Math.floor((cp.z + R) / CS), want = [];
   for (const [key, ch] of G.chunks) if (Math.hypot(ch.x - cp.x, ch.z - cp.z) > R + CS) { ch.me.visible = false; G.chunks.delete(key); G.free.push(ch); }
   for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) {
@@ -24707,13 +24729,33 @@ function vegGrass(V) {
     ch.geo.instanceCount = lo;
   }
   want.sort((a, b) => a[0] - b[0]);
-  for (let k = 0; k < Math.min(VEG.make, want.length); k++) { const [, i, j, key] = want[k]; G.chunks.set(key, vegChunk(V, i, j)); }
+  for (let k = 0, e = all ? want.length : Math.min(VEG.make, want.length); k < e; k++) { const [, i, j, key] = want[k], ch = vegChunk(V, i, j); if (high) ch.me.visible = false; G.chunks.set(key, ch); }
+}
+/* everything round the eye made at once: the record read, the trees picked, every chunk of grass; the first time in a world (the first
+   frame after buildWorld(), with the camera on the player, before anything of the match is shown) also every shader compiled, the grass's
+   even while it is hidden; then again whenever the eye jumps (a respawn, another seat or camera), so that nothing grows in in view */
+function vegWarm(V) {
+  const t0 = performance.now();
+  vegSync(V); vegPick(V); vegGrass(V, true);
+  if (!V.warm && renderer && renderer.compile) {
+    let probe = null;
+    if (V.g) {
+      const pg = new THREE.InstancedBufferGeometry(); pg.index = V.g.base.index; pg.setAttribute('position', V.g.base.getAttribute('position')); pg.setAttribute('gh', V.g.base.getAttribute('gh'));
+      pg.setAttribute('gp', new THREE.InstancedBufferAttribute(new Float32Array(4), 4)); pg.setAttribute('gc', new THREE.InstancedBufferAttribute(new Float32Array(4), 4)); pg.instanceCount = 0;
+      probe = new THREE.Mesh(pg, V.g.mat); probe.frustumCulled = false; scene.add(probe);
+    }
+    try { renderer.compile(scene, camera); } catch (e) {}
+    if (probe) scene.remove(probe);   // not disposed: it shares the clump's buffers with the chunks
+  }
+  V.warm = true; V.warmMs = performance.now() - t0;
 }
 /* each frame, from syncScene(): the clock of the wind, the record's changes, the trees round the eye picked again when it has moved or
    every `every` s, the grass */
 function vegFrame(dt) {
   const V = VS.built; if (!V || V.scene !== scene) return;
   VU.uTime.value += dt || 0; VU.uWind.value = VEG.wind * V.St.wind * (reduced ? .3 : 1);
+  const cp = camera.position, jump = !V.warm || cp.distanceToSquared(V.last) > VEG.jump * VEG.jump; V.last.copy(cp);
+  if (jump) { vegWarm(V); return; }
   const ch = vegSync(V); V.t += dt || 0;
   if (ch || V.t > VEG.every || camera.position.distanceToSquared(V.eye) > VEG.move * VEG.move) vegPick(V);
   vegGrass(V);

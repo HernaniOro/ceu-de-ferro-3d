@@ -884,7 +884,7 @@ wss.on('connection', ws => {
 });
 const beat = setInterval(() => {
   for (const ws of wss.clients) { if (!ws.alive) { ws.terminate(); continue; } ws.alive = false; ws.ping(); }
-}, 10000);
+}, Math.max(1000, +process.env.BEAT || 10000));   // BEAT=<ms>: the heartbeat's period (tests/net.js gives its test server a long one)
 wss.on('close', () => clearInterval(beat));
 
 anaPrune(); setInterval(anaPrune, 6 * 3600e3).unref();

@@ -30074,7 +30074,7 @@ syncScene = (g => dt => { g(dt); skyScene(); })(syncScene);
    warmth over the horizon (warm, at most dusk of it); the ground's sand, snow, rock and soil colours, how much its relief catches the light
    (bump), how much of its colours' saturation it keeps and how bright they are (sat, tone: a sober, photographic look); cloud: the puffs. With nothing picked, the first
    world picks by the video card (gfxAuto). Whatever draws the world (grass, trees) reads gfxLevel() and GFXQ[lv]; on Alta the sun's shadow
-   falls from the meshes of the units, planes, wrecks, trees and houses, looked over twice a second, so new meshes in those groups cast too.
+   falls from the meshes of the units, planes, wrecks, trees, rocks, bushes and houses, looked over twice a second, so new meshes in those groups cast too.
    None of it changes what the AI or the player can see: that is skySee() */
 const GFXQ = [
   { k: 'baixa', nm: 'Baixa', sub: 'leve', dpr: 1, det: 0, water: 0, clouds: 0, shadow: 0, aniso: 1 },
@@ -30368,7 +30368,7 @@ skyScene = (g => () => {
     ENV.sh.castShadow = e > .03 && lit > .2 && wet < .4;
     if ((ENV.shT = (ENV.shT || 0) - 1) <= 0) {   // what casts: what moves and what stands, looked over twice a second
       ENV.shT = 30;
-      for (const gr of [gUnits, gPlanes, gWrecks, gDr, wo && wo.trees, wo && wo.houses, wo && wo.roofs]) if (gr && gr.traverse) gr.traverse(o => { if (o.isMesh && !o.castShadow && !o.material.transparent) o.castShadow = true; });
+      for (const gr of [gUnits, gPlanes, gWrecks, gDr, wo && wo.trees, wo && wo.leaf, wo && wo.rocks, wo && wo.bushes, wo && wo.houses, wo && wo.roofs]) if (gr && gr.traverse) gr.traverse(o => { if (o.isMesh && !o.castShadow && !o.material.transparent) o.castShadow = true; });
       if (gCity) scene.traverse(o => { if (o.isMesh && o.material === gCity.mat) o.castShadow = o.receiveShadow = true; });
     }
   }

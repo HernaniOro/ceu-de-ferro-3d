@@ -25,7 +25,7 @@ console.log('-- the kinds and where they may stand --');
 fresh('ww2');
 {
   const p = flat();
-  ok([3, 4, 5, 6].every(k => FORT.K[k] && FORT.K[k].k === k) && FORT.K.length === 7, 'four more kinds of work: ' + [3, 4, 5, 6].map(k => FORT.K[k].name).join(', '));
+  ok([3, 4, 5, 6].every(k => FORT.K[k] && FORT.K[k].k === k) && FORT.K.length === 8 && FORT.K[7].span, 'four more kinds of work (and after them the pontoon, 7): ' + [3, 4, 5, 6].map(k => FORT.K[k].name).join(', '));
   ok(C.fortWhy(6, 0, p.x, p.z, 0) === 'era' && C.fortWhy(3, 0, p.x, p.z, 0) === '', 'the anti-rocket dome only in the modern era; the anti-tank post in both');
   for (const k of [3, 4, 5]) for (let i = 0; i < FORT.K[k].cap; i++) build(k, 0, p.x + 30 * i, p.z + 40 * k);
   ok([3, 4, 5].every(k => C.fortWhy(k, 0, p.x - 60, p.z + 40 * k, 0) === 'bcap'), 'a side has at most ' + [3, 4, 5].map(k => FORT.K[k].cap).join(', ') + ' of them');
@@ -102,14 +102,17 @@ function salvo(c, S, p, n) {
 }
 {
   fresh('modern'); const p = flat(3), D = build(6, 0, p.x, p.z, 0);
-  const tk = C.addUnit('tank', 0, p.x + 40, p.z, S.E.sides[0].tanks[1], true); tk.ai = null;
-  const at = C.addMan($('INF').modern[1][0], 1, p.x + 700, p.z, 0); at.ai = null; const atSeen = at.seenT, e = $('manEye')(at);
+  /* across the flat ground round the dome, so the seeker has the tank from launch (from 700 m out the rise hid it, and it was a draw whether
+     the seeker found it again before the dome could see a target) */
+  const tk = C.addUnit('tank', 0, p.x - 40, p.z, S.E.sides[0].tanks[1], true); tk.ai = null;
+  const at = C.addMan($('INF').modern[1][0], 1, p.x + 140, p.z, 0); at.ai = null; const atSeen = at.seenT, e = $('manEye')(at);
   const ms = $('MSHOT').atgm(at, SARMS.kornet, e, $('vnorm')({ x: tk.x - e.x, y: 0, z: tk.z - e.z }), tk); C.run(1);
   ok(ms.dj && at.seenT > atSeen, 'a guided missile fired at its side within its radius is engaged, and its radar shows who fired it too');
 }
 {
   const E = H.load({ seed: 6, eco: true }), S3 = ecoState(E, 'modern'); S = S3; T = S3.T;
   const p = flat(3, E), d = S3.eco.d[0]; d.en = 1000; d.mt = 1000; const D = build(6, 0, p.x, p.z, 0, E); d.mt = POSTS.dome.mt * 3 + 5;
+  S3.eco.ctl[0] = 'me'; d.q = []; E.$('ECO').hq.mt = 0; S3.eco.l = S3.eco.l.filter(e => e.team !== 0);   // the dome's metal alone: no production and no income meanwhile
   const r = salvo(E, S3, p, 10); E.run(60);
   ok(D.ds === 3 && d.mt < POSTS.dome.mt, 'every interceptor costs ' + POSTS.dome.mt + ' metal; with none left the dome is silent (' + D.ds + ' shots at 10 rounds with metal for 3)');
   const G = H.load({ seed: 7, eco: true }), S4 = ecoState(G, 'modern'); S = S4; T = S4.T;

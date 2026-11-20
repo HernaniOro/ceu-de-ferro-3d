@@ -33050,14 +33050,17 @@ function ugTiles() {
     me.userData.c = g.boundingSphere.center; G.tiles.set(k, me); scene.add(me);
   }
 }
-/* the world, then in a seat that shows it my own model around the eye: same camera, depth cleared, a near plane close enough for a cockpit */
+/* the world, then in a seat that shows it my own model around the eye: same camera, depth cleared, a near plane close enough for a cockpit;
+   then on foot the weapon in hand (vmRender) */
 function render3d() {
   bushTiles(); ugTiles();
   renderer.render(scene, camera);
-  if (!camSt.body) return;
-  camera.layers.set(1); camera.near = .06; camera.far = 150; camera.updateProjectionMatrix(); renderer.autoClearColor = false;
-  renderer.render(scene, camera);
-  renderer.autoClearColor = true; camera.layers.set(0); camera.near = 2; camera.far = 30000; camera.updateProjectionMatrix();
+  if (camSt.body) {
+    camera.layers.set(1); camera.near = .06; camera.far = 150; camera.updateProjectionMatrix(); renderer.autoClearColor = false;
+    renderer.render(scene, camera);
+    renderer.autoClearColor = true; camera.layers.set(0); camera.near = 2; camera.far = 30000; camera.updateProjectionMatrix();
+  }
+  vmRender();   // on foot, the weapon in hand over it all (cf-arma-1p)
 }
 const PV = new THREE.Vector3();
 function proj(x, y, z) {
@@ -34197,24 +34200,29 @@ function hudMan(P, u, ink, acc, disp, blink, seat) {
   if (S.t - P.hitT < 2.5) txt(blink ? 'SOB FOGO' : '', lx, y0 + H - 16 * u, 10 * u, FOE);
 }
 /* first person: the weapon in hand, drawn on the glass. From the hip it comes up from the lower right; sighted (camSt.ak) it stands in the
-   middle with its own sight: notch and post in 1944, a red dot today, a range ladder on a rocket launcher, a seeker window on a guided one */
+   middle with its own sight: notch and post in 1944, a red dot today, a range ladder on a rocket launcher, a seeker window on a guided one.
+   When the weapon is a model this frame (vmRender, VM.on) only those sight marks are drawn here, as they were, coming in as it is sighted */
 function fpMan(P, u, ink, acc, disp, blink) {
+  const vm = VM.on && VM.f === frameId;
   const a = P.arms[P.w], w = a.d, k = camSt.ak || 0, ts = S.t - a.t, calm = reduced ? 0 : 1, s = Math.min(cw, ch) / 600, cx = cw / 2, cy = ch / 2;
   const bob = calm * Math.sin(P.step * 2.3) * 5 * s * Math.min(1, Math.hypot(P.v.x, P.v.z) / 2.5), rc = calm * (ts < .12 ? 1 - ts / .12 : 0) * (w.k ? 26 : 9) * s, sw = S.t < P.swT ? (P.swT - S.t) / MAN.swap * 160 * s : 0;
   const ox = (1 - k) * 170 * s + bob * .7, oy = (1 - k) * 46 * s + Math.abs(bob) + rc + sw + (a.rl > 0 ? 70 * s : 0), metal = '#17191b', wood = S.modern ? '#2b2e2c' : '#4b3525';
   const quad = (x0, y0, w0, x1, y1, w1, col) => { hx.beginPath(); hx.moveTo(cx + ox + x0 - w0, cy + oy + y0); hx.lineTo(cx + ox + x1 - w1, cy + oy + y1); hx.lineTo(cx + ox + x1 + w1, cy + oy + y1); hx.lineTo(cx + ox + x0 + w0, cy + oy + y0); hx.closePath(); hx.fillStyle = col; hx.fill(); };
   if (w.lockT) {   // the launcher on the shoulder, and sighted its seeker window
-    quad(150 * s, ch / 2, 70 * s, 110 * s, 40 * s, 46 * s, '#30352d');
+    if (!vm) quad(150 * s, ch / 2, 70 * s, 110 * s, 40 * s, 46 * s, '#30352d');
     if (k > .5) { hx.strokeStyle = S.lockOk ? FOE : acc; hx.lineWidth = 2; const r = 150 * s; for (const [i, j] of CORN) { hx.beginPath(); hx.moveTo(cx + i * r, cy + j * (r - 26 * s)); hx.lineTo(cx + i * r, cy + j * r); hx.lineTo(cx + i * (r - 26 * s), cy + j * r); hx.stroke(); } hx.beginPath(); hx.arc(cx, cy, 5, 0, TAU); hx.stroke(); txt(w.name.toUpperCase(), cx - r, cy + r + 6 * u, 11 * u, acc); }
     return;
   }
   if (w.k) {   // a rocket launcher: the tube beside the eye, and a ladder of ranges under the aiming mark
-    quad(120 * s, ch / 2, 64 * s, 80 * s, 30 * s, 40 * s, '#3a3d33');
+    if (!vm) quad(120 * s, ch / 2, 64 * s, 80 * s, 30 * s, 40 * s, '#3a3d33');
     if (k > .5) { hx.strokeStyle = metal; hx.lineWidth = 3 * s; hx.strokeRect(cx - 34 * s, cy - 16 * s, 68 * s, 130 * s); hx.lineWidth = 1.5; [.25, .5, 1].forEach((f, i) => { const yy = cy + .125 * GR * (w.rng * f / w.spd) ** 2 / (w.rng * f) * (ch / (2 * Math.tan(camera.fov * Math.PI / 360))); hx.beginPath(); hx.moveTo(cx - (14 - i * 3) * s, yy); hx.lineTo(cx + (14 - i * 3) * s, yy); hx.stroke(); txt(Math.round(w.rng * f) + '', cx + 20 * s, yy - 6 * u, 10 * u, ink); }); }
     return;
   }
-  quad(0, ch / 2, (60 - 16 * k) * s, 0, (118 - 30 * k) * s, (26 - 6 * k) * s, wood);   // the stock and the receiver
-  quad(0, (118 - 30 * k) * s, (15 - 4 * k) * s, 0, (52 - 34 * k) * s, (7 - 2 * k) * s, metal);   // the barrel
+  if (vm) { if (k <= .5) return; hx.globalAlpha = Math.min(1, (k - .5) * 3); }   // the model is the weapon: only its sight, sighted
+  else {
+    quad(0, ch / 2, (60 - 16 * k) * s, 0, (118 - 30 * k) * s, (26 - 6 * k) * s, wood);   // the stock and the receiver
+    quad(0, (118 - 30 * k) * s, (15 - 4 * k) * s, 0, (52 - 34 * k) * s, (7 - 2 * k) * s, metal);   // the barrel
+  }
   if (S.modern) {   // a tube with a red dot
     const r = (34 + 22 * k) * s, yy = cy + oy + (62 - 62 * k) * s; hx.lineWidth = 9 * s; hx.strokeStyle = metal; hx.beginPath(); hx.arc(cx + ox, yy, r, 0, TAU); hx.stroke();
     hx.fillStyle = 'rgba(120,200,210,.07)'; hx.fill(); if (k > .5) { hx.fillStyle = '#ff3b30'; hx.beginPath(); hx.arc(cx, cy, 2.2, 0, TAU); hx.fill(); }
@@ -34223,6 +34231,7 @@ function fpMan(P, u, ink, acc, disp, blink) {
     hx.fillRect(cx + ox - 2.5 * s, yy + (50 - 50 * k) * s, 5 * s, 16 * s);
     hx.fillRect(cx + ox - 30 * s, yy + (96 - 78 * k) * s, 24 * s, 26 * s); hx.fillRect(cx + ox + 6 * s, yy + (96 - 78 * k) * s, 24 * s, 26 * s); hx.fillRect(cx + ox - 30 * s, yy + (112 - 78 * k) * s, 60 * s, 12 * s);
   }
+  hx.globalAlpha = 1;
 }
 /* a soldier as a model of its own, for a hangar card: the rig's boxes, standing with the kit's weapon */
 function manModel(d) {
@@ -39631,6 +39640,137 @@ buildWorld = (g => () => { for (const s of PM.slots) kill(s.root); PM.slots = []
 try { const b = document.getElementById('briefing'), dock = b && b.parentElement; if (dock && PACK.on) { const p = document.createElement('p'); p.className = 'hint'; p.id = 'packCred'; p.textContent = PACK.cred; p.style.cssText = 'grid-column:1/-1;font-size:11px;opacity:.6;margin:2px 0 0'; dock.appendChild(p); } } catch (e) {}
 /* the vehicles and the soldier are asked for a moment after the page opens, so the first battle already has them */
 if (PACK.on) setTimeout(() => { for (const id of new Set([...Object.values(PACK.tank), ...Object.values(PACK.trn), 'soldier', 'p_debris'])) packGet(id); }, 1500);
+/* ---------- first person: the weapon in hand as a model (cf-arma-1p, NOT TESTED: docs/nao-testado/cf-arma-1p.md) ----------
+   On foot in the eye seat (SEAT.inf) the kit's weapon is the pack's model (VMW: which one and how long; a scope on the 1944 snipers' rifles)
+   held by two simple arms, in a scene of its own (VM.sc) seen by a camera of its own (VM.cam, its own field of view VM.fov), drawn after the
+   world with only the depth cleared: it never goes into a wall, and the world's zoom does not stretch it. From the hip it sits low on the
+   right; sighted (camSt.ak) its top comes up to just under the line of sight in the middle, where fpMan's sight marks (as they were) stand
+   over it; a launcher sits on the shoulder beside the eye; a scoped rifle gives way to the scope. A step sways it, a shot kicks it back and
+   up, a reload lowers and rolls it, a swap brings it up from below, running turns it across the chest, a turn of the view drags it behind
+   for a moment. The light is the world's (its sky and its sun, turned into the eye's frame). Visual only: the aim, the shot, the hit boxes
+   and the net are not touched. Off, and fpMan draws the weapon of before on the glass: the pack off (?pack=0, file://, a server without it,
+   level 0), ?vm=0 or localStorage cf-vm 0, aboard a vehicle, and until the weapon's model has arrived. The mortar is a tube of boxes of its
+   own (the pack has none) ---------- */
+const VMW = {
+  k98: ['w_kar98', 1.1], garand: ['w_kar98', 1.1], m1carb: ['w_kar98', .9], k98s: ['w_kar98', 1.1, 1], m1903: ['w_kar98', 1.1, 1],
+  m4: ['w_m4', .84], ak: ['w_ak', .94], akm: ['w_ak', .88], mp40: ['w_smg', .83], mp7: ['w_smg', .64], vityaz: ['w_smg', .72],
+  mg42: ['w_smg', 1.12], bar: ['w_smg', 1.15], m249: ['w_m4', 1.04], pkp: ['w_ak', 1.12], pkm: ['w_ak', 1.1],
+  m82: ['w_sniper', 1.45], osv96: ['w_sniper', 1.5], svd: ['w_sniper', 1.22],
+  p38: ['w_pistol', .22], m1911: ['w_pistol', .22], m17: ['w_pistol', .2], mp443: ['w_pistol', .2], pm: ['w_pistol', .16],
+  pzf: ['w_bazooka', 1], bazooka: ['w_bazooka', 1.37], rpg: ['w_rpg', .95], rpg7v: ['w_rpg', .95],
+  javelin: ['w_launcher', 1.2], stinger: ['w_launcher', 1.5], igla: ['w_launcher', 1.6], strela: ['w_launcher', 1.4], malyutka: ['w_launcher', .9], kornet: ['w_launcher', 1.2]
+};
+/* where the grip sits in the eye's frame (x right, y up, -z ahead), from the hip and sighted; sighted y and x are worked out from the model */
+const VMP = { rifle: [[.15, -.16, -.3], [0, 0, -.2]], pistol: [[.13, -.13, -.36], [0, 0, -.38]], tube: [[.19, -.1, -.22], [0, 0, -.12]], mort: [[.1, -.36, -.55], [.1, -.36, -.55]] };
+const VM = { fov: 54, M: new Map(), on: false, f: -1, t: 0, rn: 0, sx: 0, sy: 0, ph: null, pp: 0, sc: null, cam: null, hemi: null, sun: null, lsc: null, L: [], box: null, off: false };
+try { VM.off = /[?&]vm=0/.test(location.search) || localStorage.getItem('cf-vm') === '0'; } catch (e) {}
+const vmOk = () => !VM.off && typeof PACK !== 'undefined' && PACK.on && PACK.lvl() > 0;
+/* which model a weapon is: its pack id, length, scope and how it is held */
+function vmPick(d, kit) {
+  if (!d) return null;
+  if (d.k === 'mort') return { key: 'mort', id: null, len: .75, cls: 'mort' };
+  const key = PACK_SARM.get(d), e = (key && VMW[key]) || (d.k ? [d.k === 'sam' || d.k === 'atgm' ? 'w_launcher' : 'w_bazooka', 1.2] : d.snp ? ['w_sniper', 1.2] : d.lmg ? ['w_smg', 1.1] : [kit && kit.era === 'ww2' ? 'w_kar98' : kit && kit.side ? 'w_ak' : 'w_m4', .9]);
+  return { key: e.join(':'), id: e[0], len: e[1], scope: !!e[2], cls: d.k ? 'tube' : e[0] === 'w_pistol' ? 'pistol' : 'rifle' };
+}
+function vmInit() {
+  if (VM.sc) return;
+  VM.sc = new THREE.Scene(); VM.cam = new THREE.PerspectiveCamera(VM.fov, 1, .01, 6);
+  VM.hemi = new THREE.HemisphereLight(0xffffff, 0x5a5648, .78); VM.sun = new THREE.DirectionalLight(0xfff2d8, .85); VM.sc.add(VM.hemi, VM.sun, VM.sun.target);
+  VM.box = new THREE.BoxGeometry(1, 1, 1); VM.box.userData.keep = true;
+}
+const VMY = typeof THREE !== 'undefined' ? new THREE.Vector3(0, 1, 0) : null, VMQ = typeof THREE !== 'undefined' ? new THREE.Quaternion() : null;
+/* a box from a to b (an arm's segment), t thick */
+function vmLimb(g, a, b, t, mt) {
+  const A = new THREE.Vector3().fromArray(a), v = new THREE.Vector3().fromArray(b).sub(A), m = new THREE.Mesh(VM.box, mt), L = v.length();
+  m.position.copy(A).addScaledVector(v, .5); m.quaternion.setFromUnitVectors(VMY, v.normalize()); m.scale.set(t, L, t); g.add(m); return m;
+}
+/* the weapon and the arms, built once per model: root (the eye's frame, moved each frame) > turn (the weapon's own frame: +x the muzzle,
+   the grip at the origin) > the model, the scope, the hands and arms, the flash */
+function vmBuild(pk) {
+  vmInit();
+  const root = new THREE.Group(), turn = new THREE.Group(); turn.rotation.y = Math.PI / 2; root.add(turn);
+  const metal = mat(0x2b2e2a), sleeve = mat(0x5f6a3c), hand = mat(0xb08a6a), V = { root, sleeve, hand, pk };
+  if (pk.cls === 'mort') {   // the tube carried slanted up, the base plate at its foot
+    const t = new THREE.Group(); t.rotation.z = .8; turn.add(t);
+    const tube = new THREE.Mesh(new THREE.CylinderGeometry(.045, .05, pk.len, 10), metal); tube.rotation.z = -Math.PI / 2; tube.position.x = pk.len / 2 - .1; t.add(tube);
+    const base = new THREE.Mesh(VM.box, metal); base.scale.set(.05, .3, .3); base.position.x = -.12; t.add(base);
+    V.box = new THREE.Box3(new THREE.Vector3(-.15, -.15, -.15), new THREE.Vector3(.6, .6, .15)); V.mz = [pk.len - .1, 0];
+  } else {
+    const P = packGet(pk.id); if (!P) return null;
+    const s = pk.len / P.dims[0], g = packPivot(P, 'hull') || [0, 0, 0], m = packWhole(P, 0, s);
+    m.position.set(-g[0] * s, -g[1] * s, -g[2] * s); turn.add(m); turn.updateMatrixWorld(true);
+    const inv = new THREE.Matrix4().copy(turn.matrixWorld).invert(), B = new THREE.Box3();
+    m.traverse(c => { if (c.isMesh) { c.geometry.computeBoundingBox(); B.union(c.geometry.boundingBox.clone().applyMatrix4(new THREE.Matrix4().multiplyMatrices(inv, c.matrixWorld))); } });
+    if (pk.scope) {   // a 1944 sniper's scope over the receiver
+      const sc = new THREE.Mesh(new THREE.CylinderGeometry(.017, .02, .26, 10), metal); sc.rotation.z = -Math.PI / 2; sc.position.set(.06, B.max.y + .03, 0); turn.add(sc);
+      B.max.y += .05;
+    }
+    V.box = B; const H = B.max.y - B.min.y; V.mz = [B.max.x + .02, B.min.y + .73 * H];
+  }
+  const B = V.box, L = pk.len, lx = pk.cls === 'pistol' ? .01 : pk.cls === 'mort' ? .3 : clamp(.3 * L, .16, .42), ly = pk.cls === 'pistol' ? -.05 : B.min.y * .5 - .02, lz = pk.cls === 'pistol' ? -.03 : 0;
+  const R = new THREE.Group(); turn.add(R);
+  const hb = (x, y, z) => { const m = new THREE.Mesh(VM.box, hand); m.scale.set(.085, .06, .06); m.position.set(x, y, z); R.add(m); };
+  hb(0, -.035, 0); vmLimb(R, [-.03, -.05, .02], [-.3, -.21, .13], .075, sleeve); vmLimb(R, [-.3, -.21, .13], [-.6, -.36, .32], .085, sleeve);
+  hb(lx, ly, lz); vmLimb(R, [lx - .03, ly - .03, lz - .02], [lx - .26, -.26, -.2], .075, sleeve); vmLimb(R, [lx - .26, -.26, -.2], [lx - .55, -.4, -.38], .085, sleeve);
+  if (pk.cls !== 'mort' && pk.cls !== 'tube') {   // the flash at the muzzle
+    const f = new THREE.Sprite(new THREE.SpriteMaterial({ color: 0xffd27a, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, fog: false }));
+    f.position.set(V.mz[0], V.mz[1], 0); f.visible = false; turn.add(f); V.flash = f;
+  }
+  /* sighted: the grip moved so the top of the weapon is just under the line of sight; a launcher's tube beside the eye */
+  const ads = VMP[pk.cls][1].slice();
+  if (pk.cls === 'rifle' || pk.cls === 'pistol') ads[1] = -B.max.y - (pk.cls === 'pistol' ? .006 : .01);
+  else if (pk.cls === 'tube') { ads[0] = (B.max.z - B.min.z) / 2 + .05; ads[1] = -(B.min.y + B.max.y) / 2 - .03; }
+  V.hip = VMP[pk.cls][0]; V.ads = ads;
+  VM.sc.add(root); root.visible = false;
+  return V;
+}
+/* the model of a weapon, or null while its pack file is not here (asking for it starts the fetch) */
+function vmGet(pk) {
+  let V = VM.M.get(pk.key); if (V) return V;
+  try { V = vmBuild(pk); } catch (e) { console.warn('arma em primeira pessoa: ' + pk.key, e); V = null; }
+  if (V) VM.M.set(pk.key, V);
+  return V;
+}
+/* each frame, after the world (render3d): the weapon in hand, if any */
+function vmRender() {
+  const now = performance.now(), dt = Math.min(.1, (now - (VM.t || now)) / 1000), P = S.my; VM.t = now; VM.on = false; VM.f = frameId;
+  for (const V of VM.M.values()) V.root.visible = false;
+  if (!vmOk() || !P || !P.man || P.dead || P.in || S.watch || curSeat() !== SEAT.inf) { VM.ph = null; return; }
+  if (scoped(P) && camSt.ak > .5) return;   // the scope is the view
+  const a = P.arms[P.w], d = a && a.d, pk = vmPick(d, P.def); if (!pk) return;
+  for (const o of P.arms) { const q = o !== a && vmPick(o.d, P.def); if (q && q.id) packGet(q.id); }   // the other weapon too, so a swap finds it here
+  const V = vmGet(pk); if (!V) return;
+  vmInit();
+  /* the light: the world's sky and sun, the sun turned into the eye's frame */
+  if (VM.lsc !== scene) { VM.lsc = scene; VM.L = scene ? scene.children.filter(c => c.isHemisphereLight || c.isDirectionalLight) : []; }
+  const hl = VM.L.find(c => c.isHemisphereLight), sl = VM.L.find(c => c.isDirectionalLight);
+  if (hl) { VM.hemi.color.copy(hl.color); VM.hemi.groundColor.copy(hl.groundColor); VM.hemi.intensity = hl.intensity; }
+  if (sl) { VM.sun.color.copy(sl.color); VM.sun.intensity = sl.intensity; VM.sun.position.copy(sl.position).sub(sl.target.position).normalize().applyQuaternion(VMQ.copy(camera.quaternion).invert()); }
+  const col = (P.cc || (MCOL[P.def.era] && MCOL[P.def.era][P.def.side]) || [0x5f6a3c])[0];
+  if (V.sleeve.userData.c !== col) { V.sleeve.color.setHex(col); V.sleeve.userData.c = col; }
+  const hc = S.modern ? 0x34352f : 0xb08a6a; if (V.hand.userData.c !== hc) { V.hand.color.setHex(hc); V.hand.userData.c = hc; }
+  /* the motion */
+  const k = clamp(camSt.ak || 0, 0, 1), calm = reduced ? .25 : 1, cls = pk.cls, ts = S.t - a.t, big = cls === 'tube' || cls === 'mort';
+  const sp = Math.min(1, Math.hypot(P.v.x, P.v.z) / 2.5), ph = P.step || 0;
+  VM.rn += ((P.run ? 1 : 0) - VM.rn) * Math.min(1, dt * 8);
+  const h = S.aim ? S.aim.h : 0, pt = S.aim && S.aim.d ? Math.asin(clamp(S.aim.d.y, -1, 1)) : 0;
+  if (VM.ph === null) { VM.ph = h; VM.pp = pt; }
+  let dh = h - VM.ph; dh -= Math.round(dh / TAU) * TAU; VM.ph = h; const dp = pt - VM.pp; VM.pp = pt;
+  const e = Math.exp(-dt * 9); VM.sx = clamp(VM.sx * e + dh * .5, -.09, .09); VM.sy = clamp(VM.sy * e + dp * .5, -.07, .07);
+  const T = big ? .3 : .12, rc = ts >= 0 && ts < T ? (1 - ts / T) ** 2 * calm : 0;
+  const rl = a.rl > 0 && d.rl ? Math.sin(Math.PI * clamp(1 - a.rl / d.rl, 0, 1)) ** .6 : 0, sw = S.t < P.swT ? clamp((P.swT - S.t) / MAN.swap, 0, 1) : 0;
+  const hip = V.hip, ads = V.ads, lerp = (i) => hip[i] + (ads[i] - hip[i]) * k, loose = (1 - .75 * k) * calm, run = VM.rn * (1 - k);
+  const bx = Math.sin(ph * 1.15) * .009 * sp * loose, by = -Math.abs(Math.sin(ph * 2.3)) * .01 * sp * loose + Math.sin(S.t * 1.6) * .0018 * (1 - k) * calm;
+  const R = V.root;
+  R.position.set(lerp(0) + bx - .04 * run + VM.sx * .25 * loose - .03 * rl, lerp(1) + by - .03 * run - .13 * rl - .3 * sw - VM.sy * .2 * loose, lerp(2) + (big ? .1 : cls === 'pistol' ? .03 : .045) * rc);
+  R.rotation.set((big ? .05 : cls === 'pistol' ? .16 : .055) * rc - .15 * run + .25 * rl - .7 * sw - VM.sy * loose, .03 * (1 - k) + .55 * run - VM.sx * loose, .35 * run + .55 * rl, 'YXZ');
+  if (V.flash) { const on = !d.k && ts >= 0 && ts < .05 && !reduced; V.flash.visible = on; if (on) { const s = (cls === 'pistol' ? .07 : .12) * (.8 + Math.random() * .5); V.flash.scale.set(s, s, 1); V.flash.material.rotation = Math.random() * TAU; } }
+  R.visible = true;
+  /* drawn over the world: its own camera and field of view, the depth cleared */
+  const C = VM.cam, asp = cw / Math.max(1, ch); if (C.aspect !== asp) { C.aspect = asp; C.updateProjectionMatrix(); }
+  const ac = renderer.autoClear; renderer.autoClear = false; renderer.clearDepth(); renderer.render(VM.sc, C); renderer.autoClear = ac;
+  VM.on = true;
+}
 /* ---------- trenches cut into the ground, and the tunnels' mouths (FHOLE; cf-trincheiras-tuneis, NOT TESTED: docs/nao-testado/cf-trincheiras-tuneis.md) ----------
    A trench is drawn as a hole: the ground over it is not drawn, its walls and floor are. The terrain is drawn first (renderOrder -10), then
    three meshes before everything else: the lid of each hole, lift m over the ground the terrain mesh draws there (its own triangles: meshH),

@@ -21,6 +21,9 @@ const PERC_OK = new Map([
   ['tunSee', 'perception: an enemy near a mouth finds it (trincheiras-tuneis)'],
   ['tunStep', 'the world\'s step: how many dig at a mouth, a guarded mouth cannot be blown (trincheiras-tuneis)']]);
 
+/* the CEREBRO sections that only measure: an observer, as the analytics is, reads the battle and changes nothing it reads (it decides nothing),
+   so it is left out of the scan, each by its name with its reason, in review. tests/brain-drills.js checks that the battle is the same with it off */
+const OBSERVERS = new Map([['medicao', 'the measurement of the brain (P6): the meters, the cb events and the review read the battle as the analytics does']]);
 console.log('-- 1. the code --');
 {
   const heads = [], re = /\/\* ---------- CEREBRO: ([^\n]*)/g; let m;
@@ -28,6 +31,7 @@ console.log('-- 1. the code --');
   ok(heads.some(h => /^honestidade/.test(h.name)), 'the page has its CEREBRO sections (' + heads.length + ': ' + heads.map(h => h.name).join(', ') + ')');
   const bad = [];
   for (const h of heads) {
+    if (OBSERVERS.has(h.name.split(/[\s,(]/)[0])) continue;
     const nx = html.indexOf('/* ---------- ', h.at + 10), end = nx < 0 ? html.length : nx, src = html.slice(h.at, end)
       .replace(/\/\*[\s\S]*?\*\//g, s => s.replace(/[^\n]/g, ' ')).replace(/(^|[^:'"\\])\/\/[^\n]*/g, (s, a) => a + ' '.repeat(s.length - a.length));
     const lines = src.split('\n');

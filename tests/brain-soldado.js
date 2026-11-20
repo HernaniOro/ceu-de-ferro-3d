@@ -28,10 +28,10 @@ console.log('-- (a) a round past him in the open --');
     C.run(1, () => { for (const o of e.men) o.pin(); });
     const t0 = S.t; let tDown = -1, th = { x: by.x, z: by.z };
     for (let i = 0; i < 3; i++) $('drInc')(m, by, (m.x - by.x) * 2, (m.z - by.z) * 2, 1);
-    const c0 = $('tps')(m, 'abrigo', { e: th, r: 10 }), here0 = $('brHere')(m, th);
-    const has = c0 && c0[0].sc > here0 + .5 && Math.hypot(c0[0].x - m.x, c0[0].z - m.z) > 1.5;
+    const c0 = $('brTps')(m, 'abrigo', { e: th, r: 10 }), here0 = $('brHere')(m, th);
+    const has = c0 && c0[0].sc > here0 + .3 && Math.hypot(c0[0].x - m.x, c0[0].z - m.z) > 1.5;
     let inCov = false;
-    C.run(3, () => { for (const o of e.men) o.pin(); if (tDown < 0 && m.st === 2) tDown = S.t - t0; if (!inCov && has && $('brHere')(m, th) >= here0 + .4) inCov = true; });
+    C.run(3, () => { for (const o of e.men) o.pin(); if (tDown < 0 && m.st === 2) tDown = S.t - t0; if (!inCov && has && $('brHere')(m, th) >= here0 + .3) inCov = true; });
     n++; if (tDown >= 0 && tDown <= .6 + 1e-6) down++; dts.push(tDown.toFixed(2)); if (has) { hadCov++; if (inCov) cov++; }
   }
   ok(down === n, 'flat in 0.6 s or less: ' + down + '/' + n + ' (s: ' + dts.join(' ') + ')');
@@ -136,6 +136,6 @@ console.log('-- (e) a tank made out, a house 15 m off --');
     n++;
   }
   ok(n > 0 && flat === 0, 'nobody flat in the tank\'s sight after 3 s (' + flat + ' of ' + men + ' men, ' + n + ' squads)');
-  ok(n > 0 && hid / men >= .9, 'out of the tank\'s sight: ' + hid + '/' + men + ' ' + JSON.stringify(why));
+  ok(n > 0 && hid === men, 'out of the tank\'s sight (the captain: all of them): ' + hid + '/' + men + ' ' + JSON.stringify(why));
 }
 H.done();

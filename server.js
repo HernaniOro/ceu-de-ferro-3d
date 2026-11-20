@@ -86,9 +86,9 @@ const launch = (c, m, o) => { if (mid(m.m) && Math.floor(m.m / 4096) === c.playe
 const armour = c => c.player.cls === 'tank' || c.player.cls === 'art' || c.player.cls === 'trn';
 /* the damage model's fields: d part states (two bits a part for up to 24 parts, bit 48 burning; from a page that takes this server for an
    older one, the first ten parts and bit 20), pt the part a hit struck, k the kind of hit, v the parts behind it on the shot's line, w 1 a high-explosive shell that went in, 2 a
-   shaped charge. dcap, sent after welcome, says the server knows them */
+   shaped charge, s 1 a soldier's small-arms round on a soft vehicle. dcap, sent after welcome, says the server knows them */
 const bits = v => Number.isInteger(v) && v >= 0 && v < 2 ** 49, part = v => Number.isInteger(v) && v >= 0 && v < 24, kind = v => Number.isInteger(v) && v >= 0 && v < 4;
-const via = m => Object.assign({}, Array.isArray(m.v) && m.v.length > 0 && m.v.length <= 3 && m.v.every(part) && { v: m.v }, (m.w === 1 || m.w === 2) && { w: m.w });
+const via = m => Object.assign({}, Array.isArray(m.v) && m.v.length > 0 && m.v.length <= 3 && m.v.every(part) && { v: m.v }, (m.w === 1 || m.w === 2) && { w: m.w }, m.s === 1 && { s: 1 });
 const blow = m => num(m.dmg) && m.dmg > 0 && m.dmg <= 1000 && part(m.pt) && kind(m.k);
 /* world objects: a flat list of pairs, an object's id and its stage (1 damaged, 2 down) or the damage done to it */
 const pairs = (l, ok) => Array.isArray(l) && l.length > 0 && l.length <= 200 && l.length % 2 === 0 && l.every((v, i) => (i % 2 ? ok(v) : Number.isInteger(v) && v >= 0 && v < 65536));
@@ -164,6 +164,7 @@ const RX = {
     if (sus) { clearTimeout(room.sut); room.sus = 0; }
     send(c.ws, Object.assign({}, room.wf = { t: 'welcome', dr: 1, id: c.player.id, host: room.host.player.id, swap: 1, inf: 1, obj: 1, sup: 1, hl: 1, lo: 1, hlo: 1, trn: 1, cmd: 1, crew: 1, cap: 1, ms: 1, cq: 1, bld: 1, she: 1, civ: 1, eco: 1, gen: 1, gn: gview(room, c, room.gen), gk: gview(room, c, room.genk), cqn: room.cqn || 0, ff: room.ff || 0, mv: room.mv || 1, ns: room.ns, gc: 2, sap: 1, players: [...room.values()].map(o => o.player), rs: 1, ana: ANA.on ? 1 : 0, sky: 1, hlp: 1, lg: 1, rec: 1, rte: 1, br: 1, brb: 1, bnb: 1, gq: 1, crl: 1, man2: 1 }, sus && { host: 0, sus: 1 }));
     send(c.ws, { t: 'fcap', v: 1 });   // this server knows fort and fbuild (trenches and sandbags)
+    send(c.ws, { t: 'tcap', v: 1 });   // and tun (the tunnels, cf-trincheiras-tuneis)
     send(c.ws, { t: 'dcap', v: 1 });   // and the longer damage model
     if (sus) snapOut(c);   // a guest of the match that was, until the host message makes it the host: it adopts, as when a host leaves
     cast(c, { t: 'joined', player: c.player });
@@ -509,6 +510,13 @@ RX.glog = (c, m) => {
   if (!host(c) || !ts(c.room, m.s) || !num(m.T) || !lst(m.e, 80) || !m.e.every(row) || (m.to !== undefined && !pid(m.to))) return;
   castSide(c, Object.assign({ t: 'glog', s: m.s, T: m.T, e: m.e }, m.full === 1 && { full: 1 }), m.s, m.to);
 };
+/* the tunnels (cf-trincheiras-tuneis, NOT TESTED): the host tells each side s its own tunnels and the enemy mouths it found, a row each,
+   [id, side, ax, az, bx, bz, percent dug, found (1 mouth a, 2 mouth b, 3 its own), state (0 open, 1 fallen)]; only that side's players get it */
+RX.tun = (c, m) => {
+  const row = e => vec(e, 9) && Number.isInteger(e[0]) && e[0] >= 0 && e[0] < 1e6 && ts(c.room, e[1]) && [2, 3, 4, 5].every(i => Math.abs(e[i]) < 1e5) && e[6] >= 0 && e[6] <= 100 && Number.isInteger(e[7]) && e[7] >= 0 && e[7] <= 3 && (e[8] === 0 || e[8] === 1);
+  if (!host(c) || !ts(c.room, m.s) || !lst(m.e, 64) || !m.e.every(row)) return;
+  castSide(c, { t: 'tun', s: m.s, e: m.e }, m.s);
+};
 RX.keep = (c, m) => { if (host(c) && m.e && rec(m.e)) c.room.keep = m.e; };
 RX.gclaim = (c, m) => {
   const room = c.room, s = sideOf(c), id = c.player.id, held = room.gen[s], now = Date.now();
@@ -564,10 +572,11 @@ RX.gres = (c, m) => {
   if (o && o !== c && int(m.n, 0, 1e9) && typeof m.ok === 'boolean' && txt(m.why, 12) && Number.isInteger(m.id)) send(o.ws, Object.assign({ t: 'gres', n: m.n, ok: m.ok, why: m.why, id: m.id }, m.r !== undefined && (rec(m.r) || Array.isArray(m.r)) && { r: m.r }));
 };
 /* sappers (welcome says sap: 1): the sapper kits, and three messages. mine: the host's list of the mines, in parts i of n of list q, a row
-   each, [id, kind (0 AT, 1 AP), side, x, z, known (bit s: side s knows it, as many bits as the room has sides)]; each player is passed only the rows of its side's mines and of
+   each, [id, kind (0 AT, 1 AP, 2 a command IED: cf-slots-arma), side, x, z, known (bit s: side s knows it, as many bits as the room has sides)]; each player is passed only the rows of its side's mines and of
    those its side knows, a spectator all of them. The server keeps the host's last whole list, and s its last mine id, and hands them to
    the next host alone, before it is named, so that no side's hidden mines are lost with the old host. mboom: the host says mine id (kind k, side s) went off at p, to the room. mreq: a soldier
-   to the host, k 0 or 1 lay one at p, 2 lift id, 3 its own body or vehicle set id off; 300 ms apart at least. dint: the host says its
+   to the host, k 0 or 1 lay one at p, 2 lift id, 3 its own body or vehicle set id off, 4 lay a command IED at p, 5 its phone sets off
+   its command IEDs, 6 its suicide vest goes off (cf-slots-arma); 300 ms apart at least. dint: the host says its
    anti-rocket dome f engaged the round of key k (drawn from its launch numbers) and stopped it (s 1) or not, to the room */
 {
   const kits = { ww2: ['pionier', 'engineer'], modern: ['blueEng', 'redEng'] };
@@ -576,7 +585,7 @@ RX.gres = (c, m) => {
     if (m.includes(k[0])) throw new Error('sapper kits already there');
     m.splice(m.length / 2, 0, k[0]); m.push(k[1]); for (const id of k) rooms[era].inf.add(id);
   }
-  const row = room => e => vec(e, 6) && Number.isInteger(e[0]) && e[0] > 0 && e[0] < 65536 && (e[1] === 0 || e[1] === 1) && ts(room, e[2]) && Number.isInteger(e[5]) && e[5] >= 0 && e[5] <= ALL(room);
+  const row = room => e => vec(e, 6) && Number.isInteger(e[0]) && e[0] > 0 && e[0] < 65536 && (e[1] === 0 || e[1] === 1 || e[1] === 2) && ts(room, e[2]) && Number.isInteger(e[5]) && e[5] >= 0 && e[5] <= ALL(room);
   RX.mine = (c, m) => {
     if (!host(c) || !Number.isInteger(m.q) || m.q < 0 || m.q >= 1e6 || !Number.isInteger(m.i) || !Number.isInteger(m.n) || m.i < 0 || m.i >= m.n || m.n > 4 || !Array.isArray(m.e) || m.e.length > 40 || !m.e.every(row(c.room))) return;
     const r = c.room, b = m.i && r.mbuf && r.mbuf.q === m.q ? r.mbuf : (r.mbuf = { q: m.q, n: m.n, s: 0, e: [] });
@@ -589,11 +598,11 @@ RX.gres = (c, m) => {
     }
   };
   RX.dint = (c, m) => { if (host(c) && Number.isInteger(m.f) && m.f >= 0 && m.f < 65536 && Number.isInteger(m.k) && m.k >= 0 && m.k < 4294967296 && (m.s === 0 || m.s === 1)) cast(c, { t: 'dint', f: m.f, k: m.k, s: m.s }); };
-  RX.mboom = (c, m) => { if (host(c) && Number.isInteger(m.id) && m.id > 0 && m.id < 65536 && (m.k === 0 || m.k === 1) && ts(c.room, m.s) && vec(m.p, 2)) cast(c, { t: 'mboom', id: m.id, k: m.k, s: m.s, p: m.p }); };
+  RX.mboom = (c, m) => { if (host(c) && Number.isInteger(m.id) && m.id > 0 && m.id < 65536 && (m.k === 0 || m.k === 1 || m.k === 2) && ts(c.room, m.s) && vec(m.p, 2)) cast(c, { t: 'mboom', id: m.id, k: m.k, s: m.s, p: m.p }); };
   RX.mreq = (c, m) => {
-    const h = c.room.host, now = Date.now(), lay = (m.k === 0 || m.k === 1) && vec(m.p, 2), id = (m.k === 2 || m.k === 3) && Number.isInteger(m.id) && m.id > 0 && m.id < 65536;
-    if (!h || h === c || (c.player.cls !== 'inf' && !(m.k === 3 && id)) || !(lay || id) || now - (c.mrq || 0) < 300) return;
-    c.mrq = now; send(h.ws, Object.assign({ t: 'mreq', from: c.player.id, k: m.k }, lay ? { p: m.p } : { id: m.id }));
+    const h = c.room.host, now = Date.now(), lay = (m.k === 0 || m.k === 1 || m.k === 4) && vec(m.p, 2), id = (m.k === 2 || m.k === 3) && Number.isInteger(m.id) && m.id > 0 && m.id < 65536, det = m.k === 5 || m.k === 6;
+    if (!h || h === c || (c.player.cls !== 'inf' && !(m.k === 3 && id)) || !(lay || id || det) || now - (c.mrq || 0) < 300) return;
+    c.mrq = now; send(h.ws, Object.assign({ t: 'mreq', from: c.player.id, k: m.k }, lay ? { p: m.p } : det ? {} : { id: m.id }));
   };
 }
 /* the side of every model a player or an AI row may have (MSIDE), era by era, in place of the half of each list: 0 the Blue force (in modern

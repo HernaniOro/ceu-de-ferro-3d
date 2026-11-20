@@ -612,7 +612,7 @@ body[data-era="modern"] #hangar .hg-fx .fx-b{background:radial-gradient(130% 100
       <button class="chip" type="button" data-o="res" title="Reserva: avançar até o ponto">Reserva <kbd>K</kbd></button>
       <button class="chip" type="button" data-o="ctr" title="Contra-ataque da reserva">Contra <kbd>C</kbd></button>
       <button class="chip" type="button" data-o="rally" title="Ponto de reunião das esquadras de assalto (botão direito remove)">Reunião <kbd>P</kbd></button>
-      <button class="chip" type="button" data-o="mark" title="Marcar um objetivo para os pilotos do seu lado (botão direito remove)">Marcar <kbd>M</kbd></button>
+      <button class="chip" type="button" data-o="mark" title="Marcar um objetivo para os pilotos do seu lado (botão direito remove)">Marcar <kbd>Shift+O</kbd></button>
       <button class="chip" type="button" data-o="free" title="Devolver as esquadras selecionadas à IA">Devolver <kbd>X</kbd></button>
       <button class="chip" type="button" data-o="rt" title="Rota: clique os pontos por onde as esquadras passam; vai com a próxima ordem">Rota <kbd>U</kbd></button>
       <button class="chip" type="button" data-o="ord" title="Ordem ampla: atacar, defender, reconhecer, escoltar, emboscar ou fogo; as esquadras decidem como">Ampla <kbd>J</kbd></button>
@@ -636,7 +636,7 @@ body[data-era="modern"] #hangar .hg-fx .fx-b{background:radial-gradient(130% 100
     </div>
   </div>
   <p class="gen-toast" id="genToast" role="status" aria-live="polite" hidden></p>
-  <p class="gen-keys">Arraste ou WASD: mover · Roda ou + −: zoom · F: enquadrar · 1 2: lado · V: ver tudo · I: influência · Z: zonas de morte · L: rótulos · Tab: fechar</p>
+  <p class="gen-keys">Arraste ou WASD: mover · Roda ou + −: zoom · F: enquadrar · 1 2: lado · V: ver tudo · I: influência · Z: zonas de morte · L: rótulos · M ou Tab: fechar</p>
   <div class="gen-end" id="genEnd" hidden><h2 id="genEndT"></h2><p id="genEndW"></p><div class="row"><button class="launch" id="genAgain" type="button">Nova partida</button><button class="ghost" id="genHome" type="button">Voltar ao hangar</button><button class="ghost" id="genAar" type="button">Revisão pós-batalha</button></div></div>
 </section>
 <div class="gen-end" id="specEnd" style="z-index:7" hidden><h2>Sem jogadores na sala</h2><p>A partida online acabou para quem assiste.</p><div class="row"><button class="launch" id="specLocal" type="button">Assistir neste computador</button><button class="ghost" id="specHome" type="button">Voltar ao hangar</button></div></div>
@@ -7892,7 +7892,7 @@ function fireGun(p) {
   const g = p.def.gun, f = p.f, s = p.ai ? .012 : .004, L = p.def.len * .5;
   const dx = f.x + rand(-s, s), dy = f.y + rand(-s, s), dz = f.z + rand(-s, s);
   p.gcool = g.rate; p.ammo--; p.shotT = S.t;
-  S.bullets.push({ x: p.x + f.x * L, y: p.y + f.y * L, z: p.z + f.z * L, vx: p.v.x + dx * g.spd, vy: p.v.y + dy * g.spd, vz: p.v.z + dz * g.spd, life: g.life || 1.5, team: p.team, dmg: g.dmg, ap: g.ap, by: p, tr: p.def.prop ? 0 : 1, fr: g.fr });
+  S.bullets.push({ x: p.x + f.x * L, y: p.y + f.y * L, z: p.z + f.z * L, vx: p.v.x + dx * g.spd, vy: p.v.y + dy * g.spd, vz: p.v.z + dz * g.spd, life: g.life || 1.5, team: p.team, dmg: g.dmg, ap: g.ap, by: p, tr: p.def.prop ? 0 : 1, fr: g.fr, cal: calOf(g) });
   fx.shot(p === S.my, p);
 }
 /* see: the lock needs the seeker's line (seekLine, smoke included); see 2: a radar's, the ground and what hides only. LOCK.blk: see above */
@@ -8221,11 +8221,52 @@ function lockMsl(p, u, w, own) {
   }
   return best;
 }
-/* a missile is stopped, by whoever owns the interceptor: gone here, and for everyone through its id */
-function intercept(m, by) {
-  m.gone = true; blastFx(m.x, m.y, m.z, 16);
-  if (by.me) S.floats.push({ x: m.x, y: m.y + 6, z: m.z, text: 'míssil interceptado', life: 2 });
-  if (S.net && m.mid) Net.mkill(m);
+/* shooting a missile down by gunfire (cf-intercepta-missil; NOT TESTED, see docs/nao-testado/cf-intercepta-missil.md). Only a round of cal mm
+   or more counts (the .50 up: Kord, DShK, KPV, 20-30 mm cannon, ZU-23, CIWS); a rifle's does nothing. A round that passes within r m of a
+   missile of the other side in flight (am m for a gun made for it, the CIWS) strikes it for dmg of its hp ([from cal mm, so much], am rounds
+   amk times that) and is spent. hp by what the missile is: at an anti-tank one (Javelin, TOW, Kornet, Hellfire, Ataka, any from the ground or
+   a helicopter), agm a plane's air-to-ground one, bomb a guided bomb, air a missile for aircraft (AAM, SAM). At 0 it bursts where it is, its
+   warhead's dmg times boom over its r. Online the host decides (a guest's copy of the round only sparks) and tells everyone (Net.mkill).
+   ai: an AI crew with such a gun turns it on a missile it sees (sees: in its line, not hidden) coming at it within see m, cone the cosine
+   of its heading on the crew, an AA gun also on one coming at a friend within guard m; after react s, between gun[0] and gun[1] m, with its
+   spread sp rad over the gun's and a lead off by up to err rad, firing only on aim (tol rad). So it is a chance, not a sure kill */
+const MINT = { cal: 12.7, r: 1, hp: { at: 8, agm: 12, bomb: 20, air: 6 }, dmg: [[12.7, 1], [14.5, 1.5], [20, 3], [23, 3.5], [30, 5]], amk: 1.6, boom: .6,
+  ai: { see: 1500, cone: .94, guard: 400, react: [.4, 1.1], gun: [120, 1100], sp: .006, err: .004, tol: .03 } };
+/* the calibre of a gun, mm, from its name (0: a rifle's, or one that does not say), kept on the arm */
+function calOf(w) {
+  if (!w) return 0;
+  if (w.cal !== undefined) return w.cal;
+  const n = w.name || '', num = r => parseFloat(r[1].replace(',', '.'));
+  let c = 0, r;
+  if (/foguete|casulo/i.test(n)) c = 0;   // a pod of unguided rockets is no gun
+  else if (/\.50|12[,.]7/.test(n)) c = 12.7;
+  else if (/14[,.]5|KPV/.test(n)) c = 14.5;
+  else if ((r = /(\d+(?:[,.]\d+)?)\s*cm\b/.exec(n))) c = num(r) * 10;
+  else if ((r = /(\d+(?:[,.]\d+)?)\s*mm\b/.exec(n))) c = num(r);
+  else if (/GAU-8|GSh-30|2A42|2A38|Mk ?44|M230/.test(n)) c = 30;
+  else if (/ZU-23|AZP-23|GSh-23/.test(n)) c = 23;
+  else if (/M61|Vulcan|MG ?151|Hispano|Flakvierling/.test(n)) c = 20;
+  else if ((r = /\b(\d{1,2}[,.]\d{1,2})\b/.exec(n))) c = num(r);
+  else if (w.am) c = 30;
+  return (w.cal = c);
+}
+const mintHp = m => MINT.hp[m.bomb ? 'bomb' : !m.gnd ? 'air' : m.by && m.by.q && !m.by.heli ? 'agm' : 'at'];
+function mintDmg(b) { let k = 0; for (const q of MINT.dmg) if (b.cal >= q[0]) k = q[1]; return b.am ? k * MINT.amk : k; }
+/* the round b strikes missile m: here it only sparks unless this copy decides (solo, or the host); at no hp left it is shot down */
+function mintHit(m, b) {
+  puff(m.x, m.y, m.z, 'spark', 1);
+  if (S.net && !S.host) return;
+  if (m.hp === undefined) m.hp = mintHp(m);
+  if ((m.hp -= mintDmg(b)) <= 0) intercept(m, b.by, true);
+}
+/* where a missile shot down bursts: its warhead, cut to MINT.boom, over its own radius; one with none (an AAM) only flashes */
+function mslBoom(m) { const o = m.o || {}; if (o.r && o.dmg) explode(m.x, m.y, m.z, o.r, o.dmg * MINT.boom, m.by, m.team); else blastFx(m.x, m.y, m.z, 16); }
+/* a missile is stopped, by whoever owns the interceptor: gone here, and for everyone through its id. boom: shot down by gunfire, it bursts
+   where it is (mslBoom), here and on every copy */
+function intercept(m, by, boom) {
+  m.gone = true; if (boom) mslBoom(m); else blastFx(m.x, m.y, m.z, 16);
+  if (by && by.me) S.floats.push({ x: m.x, y: m.y + 6, z: m.z, text: boom ? 'míssil abatido' : 'míssil interceptado', life: 2 });
+  if (S.net && m.mid) Net.mkill(m, boom);
 }
 const pivot = u => ({ x: u.x, y: u.y + u.def.mh, z: u.z });
 function gunDir(u) { const yw = u.h + u.ty, cp = Math.cos(u.tp); u.f = { x: Math.cos(yw) * cp, y: Math.sin(u.tp), z: -Math.sin(yw) * cp }; }
@@ -8290,7 +8331,7 @@ const ARMK = {
     return b;
   }, relay: (u, i, b) => Net.shot(u, [b.x, b.y, b.z], [b.vx, b.vy, b.vz], b.smk) },
   gun: { fire(u, w, m, d) {
-    const b = { x: m.x, y: m.y, z: m.z, vx: d.x * w.spd, vy: d.y * w.spd, vz: d.z * w.spd, life: w.life, team: u.team, dmg: w.dmg, ap: w.ap, by: u, tr: 2, am: w.am };
+    const b = { x: m.x, y: m.y, z: m.z, vx: d.x * w.spd, vy: d.y * w.spd, vz: d.z * w.spd, life: w.life, team: u.team, dmg: w.dmg, ap: w.ap, by: u, tr: 2, am: w.am, cal: calOf(w) };
     S.bullets.push(b); fx.shot(u === S.my, u); return b;
   } },
   flak: { fire(u, w, m, d) {   // the fuse is set for where the nearest plane on the gun line will be when the round gets there
@@ -9533,12 +9574,47 @@ function aiArt(u, dt) {
   if (!shift(u)) c.drive = A.fd < G.hold || A.blocked || atLimit(u) ? 0 : GAI.march / u.def.spd;
 }
 const AI = { tank: aiTank, aa: aiAA, truck: aiTruck, art: aiArt };
+/* the missile an AI crew sees coming (MINT.ai): heading at it, or for an AA gun at a friend close by; its own first */
+function mintSee(u, aa) {
+  const G = MINT.ai, on = (m, o, d) => d > 1 && ((o.x - m.x) * m.d.x + (bodyY(o) - m.y) * m.d.y + (o.z - m.z) * m.d.z) / d > G.cone;
+  let best = null, bd = 1e9;
+  for (const m of S.missiles) {
+    if (m.gone || !m.gnd || m.team === u.team) continue;
+    const d = dist(m, u); if (d > G.see) continue;
+    const t = m.target || m.tg0, mine = on(m, u, d), fr = !mine && aa && t && t !== u && t.kind && t.team === u.team && hdist(t, u) < G.guard && on(m, t, dist(m, t));
+    if (!mine && !fr) continue;
+    const sc = d + (mine ? 0 : G.see);
+    if (sc < bd && sees(u, m)) { bd = sc; best = m; }
+  }
+  return best;
+}
+/* an AI crew with a heavy gun (calOf, MINT.cal or more) turns it on a missile it sees coming, over whatever it was doing: a chance, never a
+   sure thing (MINT.ai). A launcher with its own answer (aiAA with a sam) is left to it */
+function aiMint(u, dt) {
+  const A = u.ai, c = u.ctl, G = MINT.ai;
+  if (u.dead || (u.kind === 'aa' && u.arms[0] && u.arms[0].d.k === 'sam')) return;
+  if (A.mgi === undefined) A.mgi = u.arms.findIndex(a => a && a.d.k === 'gun' && a.d.dmg > 0 && calOf(a.d) >= MINT.cal);
+  const i = A.mgi; if (i < 0) return;
+  if ((A.mgT = (A.mgT || 0) - dt) <= 0) {
+    A.mgT = GAI.think;
+    const m = mintSee(u, u.kind === 'aa' || !!u.def.aaGun);
+    if (m && m !== A.mm) { A.mmT = S.t + rand(G.react[0], G.react[1]); A.me = { x: rand(-G.err, G.err), y: rand(-G.err, G.err), z: rand(-G.err, G.err) }; }
+    A.mm = m;
+  }
+  const m = A.mm, a = u.arms[i]; if (!m || m.gone || S.t < A.mmT || !a || !(a.ammo > 0)) return;
+  const w = a.d, r = dist(m, u); if (r < G.gun[0] || r > G.gun[1]) return;
+  const s = lead(u, m, w.spd, true), e = A.me || ZERO, d = vnorm({ x: s.d.x + e.x, y: s.d.y + e.y, z: s.d.z + e.z });
+  if (!i || !w.free) c.aim = d;
+  if (w.free) c.aim2 = d;
+  c.sp[i] = G.sp; c.fire[i] = (!!w.free && !!c.aim2) || onAim(u, d, G.tol);
+  if (i) c.fire[0] = false;
+}
 const aiFix = u => (u.burn > 0 || u.mod.fixable) && S.t - u.hitT > GAI.fix.calm && !(u.ai.tgt && !u.ai.tgt.dead);
 function stepUnit(u, dt) {
   u.inv -= dt;
   if (u.net) ghostUnit(u, dt);
   else {
-    if (u.ai) { if (!(u.trip && tripAI(u, dt))) AI[u.kind](u, dt); u.ctl.fix = aiFix(u); }
+    if (u.ai) { if (!(u.trip && tripAI(u, dt))) AI[u.kind](u, dt); if (!u.gp) aiMint(u, dt); u.ctl.fix = aiFix(u); }
     fieldFix(u, dt); moveUnit(u, dt); turret(u, dt);
     if (u.burn) burn(u, dt);
     if (u.dead) return;
@@ -9662,7 +9738,7 @@ function manFire(m, a) {
   if (w.snp) return snipe(m, a);
   const s = (w.sp * STANCE[m.st].sp * (c.ads ? MAN.ads.sp : 1) * (moving ? MAN.move : 1) * (1 + m.wa * MAN.shake) + c.sp) * (m.sup > S.t ? SUP.sp : 1);
   a.mag--; a.cool = w.rate; a.t = m.shotT = S.t;
-  S.bullets.push({ x: e.x + f.x, y: e.y + f.y - .12, z: e.z + f.z, vx: (f.x + rand(-s, s)) * w.spd, vy: (f.y + rand(-s, s)) * w.spd, vz: (f.z + rand(-s, s)) * w.spd, life: 1.3, team: m.team, dmg: w.dmg, ap: 0, sa: 1, by: m, tr: 0 });
+  S.bullets.push({ x: e.x + f.x, y: e.y + f.y - .12, z: e.z + f.z, vx: (f.x + rand(-s, s)) * w.spd, vy: (f.y + rand(-s, s)) * w.spd, vz: (f.z + rand(-s, s)) * w.spd, life: 1.3, team: m.team, dmg: w.dmg, ap: 0, sa: 1, by: m, tr: 0, cal: calOf(w) });   // cal: a post's heavy gun can strike a missile (MINT)
   fx.shot(m === S.my, m);
 }
 /* a hand grenade (k 1) or a smoke grenade (2), thrown along the aim and a little up */
@@ -11231,11 +11307,13 @@ function stepShots(dt) {
     const x0 = b.x, y0 = b.y, z0 = b.z;
     b.life -= dt; b.vy -= GR * dt; b.x += b.vx * dt; b.y += b.vy * dt; b.z += b.vz * dt;
     if (b.life <= 0) { b.gone = true; continue; }
-    if (b.am) for (const m of S.missiles) {   // a gun that can stop a missile: the nearest the round came to it in this step
-      if (!m.gnd || m.gone || m.team === b.team) continue;
-      const rx = m.x - b.x, ry = m.y - b.y, rz = m.z - b.z, vx = b.vx - m.d.x * m.v, vy = b.vy - m.d.y * m.v, vz = b.vz - m.d.z * m.v, t = clamp((rx * vx + ry * vy + rz * vz) / (vx * vx + vy * vy + vz * vz), -dt, dt);
-      if (Math.hypot(rx - vx * t, ry - vy * t, rz - vz * t) > b.am) continue;
-      b.gone = true; if (b.by.net) puff(m.x, m.y, m.z, 'spark', 1); else intercept(m, b.by); break;
+    if (b.cal >= MINT.cal) for (const m of S.missiles) {   // a heavy round and a missile in flight: the nearest the round came to it in this step (MINT)
+      if (m.gone || m.team === b.team) continue;
+      const rx = m.x - b.x, ry = m.y - b.y, rz = m.z - b.z, vx = b.vx - m.d.x * m.v, vy = b.vy - m.d.y * m.v, vz = b.vz - m.d.z * m.v, R = Math.max(MINT.r, b.am || 0), far = (Math.abs(vx) + Math.abs(vy) + Math.abs(vz)) * dt + R;
+      if (Math.abs(rx) > far || Math.abs(ry) > far || Math.abs(rz) > far) continue;
+      const t = clamp((rx * vx + ry * vy + rz * vz) / (vx * vx + vy * vy + vz * vz || 1), -dt, dt);
+      if (Math.hypot(rx - vx * t, ry - vy * t, rz - vz * t) > R) continue;
+      b.gone = true; mintHit(m, b); break;
     }
     if (b.gone) continue;
     if (b.y < 400) {
@@ -12235,7 +12313,7 @@ const trnRx = {
    to its own parts. down and aidown: det 1 when the ammunition went up.
    ord: a plane's ordnance i, or a vehicle's sam, with the target's id. shot: a tank or howitzer round, p origin and v velocity.
    A guided missile has an id of its own, minted by the client that launches it (mint): ord carries it as m, and tm names the missile a sam is
-   sent at. mkill: the owner of an interceptor says the missile with this id is stopped, and every copy of it goes. smoke: a screen at p.
+   sent at. mkill: the owner of an interceptor says the missile with this id is stopped, and every copy of it goes (b 1: shot down by gunfire, it bursts there). smoke: a screen at p.
    Ids: players are positive, AI entities negative (aid), given out by the host; a target or killer is either, or null.
    The AI battle belongs to the host (Net.host). It sends ai snapshots, planes (k 0) ten times a second and vehicles (k 1) five: one row per
    entity, [aid, model, team, hp, f, x, y, z, then q and v for a plane or hull heading, turret yaw, gun pitch, vx, vz for a vehicle, then d], with the
@@ -12292,7 +12370,7 @@ const Net = {
   reg(id, m) { if (Net.msl.size > 48) for (const [k, v] of Net.msl) if (v.gone) Net.msl.delete(k); m.mid = id; Net.msl.set(id, m); },
   mint(m) { Net.reg(Net.id * 4096 + (Net.mseq = Net.mseq % 4095 + 1), m); },
   ord(o, i, m) { const t = m && m.target; if (m) Net.mint(m); Net.mine(o, 'ord', Object.assign({ i: LO.wire(o, i), target: Net.ref(t) }, m && { m: m.mid }, t && t.mid && { tm: t.mid })); },
-  mkill(m) { Net.send('mkill', { id: m.mid }); },
+  mkill(m, boom) { Net.send('mkill', boom ? { id: m.mid, b: 1 } : { id: m.mid }); },
   smoke(o) { const r = n => +n.toFixed(1); Net.mine(o, 'smoke', { p: [r(o.x), r(o.y), r(o.z)] }); },
   flare(o) { Net.mine(o, 'flare'); },
   shot(o, p, v, smk, he) { const r = n => +n.toFixed(1); Net.mine(o, 'shot', Object.assign({ p: p.map(r), v: v.map(r) }, smk && { s: 1 }, he && { h: 1 })); },
@@ -12504,7 +12582,7 @@ const Net = {
     aitoss(m) { Net.rx.toss(m, Net.ai.get(m.id)); },
     ord(m) { Net.fireAs(Net.ghosts.get(m.from), m.i, m.target, m.m, m.tm); },
     load(m) { const p = Net.players.get(m.id), g = Net.ghosts.get(m.id); if (!p || !S.net) return; p.lo = m.lo || null; if (g && !g.dead && !g.kind && !g.man) LO.refit(g, p.lo); },
-    mkill(m) { const o = Net.msl.get(m.id); if (o && !o.gone) { o.gone = true; blastFx(o.x, o.y, o.z, 16); } },
+    mkill(m) { const o = Net.msl.get(m.id); if (o && !o.gone) { o.gone = true; if (m.b === 1) mslBoom(o); else blastFx(o.x, o.y, o.z, 16); } },   // b: shot down by gunfire (MINT), it bursts
     smoke(m) { if (S.net && Array.isArray(m.p)) addSmoke(m.p[0], m.p[1], m.p[2]); },
     aismoke(m) { Net.rx.smoke(m); },
     shot(m, g) { g = g || Net.ghosts.get(m.from); const w = g && g.net && !g.dead && g.kind && g.arms[0] && g.arms[0].d; if (w && (w.k === 'shell' || w.k === 'how')) { const b = (w.k === 'how' ? lob : shell)(g, m.h === 1 && w.hv || w, m.p[0], m.p[1], m.p[2], m.v[0], m.v[1], m.v[2]); if (m.s === 1 && w.k === 'how') b.smk = CMD.smk.art; } },
@@ -13725,7 +13803,7 @@ function heliMuzzle(p) {
 function heliGun(p) {
   const g = p.def.gun, a = p.gf, m = heliMuzzle(p), s = g.sp + (p.ai ? HAI.sp : 0) + p.mod.disp * DMG.disp;
   p.gc = g.rate; p.ammo--; p.shotT = S.t;
-  S.bullets.push({ x: m.x, y: m.y, z: m.z, vx: p.v.x + (a.x + rand(-s, s)) * g.spd, vy: p.v.y + (a.y + rand(-s, s)) * g.spd, vz: p.v.z + (a.z + rand(-s, s)) * g.spd, life: g.life, team: p.team, dmg: g.dmg, ap: g.ap, by: p, tr: 1, fr: g.fr });
+  S.bullets.push({ x: m.x, y: m.y, z: m.z, vx: p.v.x + (a.x + rand(-s, s)) * g.spd, vy: p.v.y + (a.y + rand(-s, s)) * g.spd, vz: p.v.z + (a.z + rand(-s, s)) * g.spd, life: g.life, team: p.team, dmg: g.dmg, ap: g.ap, by: p, tr: 1, fr: g.fr, cal: calOf(g) });
   fx.shot(p === S.my, p);
 }
 /* a door gunner by himself: the nearest enemy soldier or soft vehicle one of the two guns bears on */
@@ -34264,6 +34342,279 @@ genCard = (f => (t, id) => {
   const u = q.men.filter(m => !m.dead && m.ut && m.ut.k !== 'cumprir').map(m => m.ut.k); if (u.length) c.decide.push('Homens por conta própria: ' + u.join(', '));
   c.mo = n; return c;
 })(genCard);
+/* ---------- the prisoners' world (P4, cf-p4-prisioneiros; NÃO TESTADO, see docs/nao-testado/cf-p4-prisioneiros.md) ----------
+   What reaches an eye, for the prisoners (CEREBRO: prisioneiros reads only these): percGuard(m, r) the soldier of the AI of another side
+   nearest m within r who sees him standing with his hands up (in a squad, up, on foot, not its leader while it has another man up, not a
+   sniper's, a mortar's or a drone's, with room for one more prisoner: PRIS.per), the one his squad sends to take him; percSaw(m, r) what a
+   prisoner knew of his own side where he was taken: his squad's men within BRAIN.sinal m (voice and hand signals: he knows where they are)
+   and the men and vehicles of his side he could see from there (within r, in his line of sight). Nothing else of his side goes in */
+function percGuard(m, r) {
+  let best = null, bd = r;
+  for (const o of S.men) {
+    if (o.dead || o.down || o.in || o.sur || o.net || !o.ai || o.team === m.team || !o.sq || o.sq.net || o.def.snp || o.def.mort || o.def.drone) continue;
+    if (Math.abs(o.x - m.x) > bd || Math.abs(o.z - m.z) > bd) continue;
+    const d = hdist(o, m); if (d >= bd) continue;
+    if (o.sq.lid === o && o.sq.men.some(x => x !== o && !x.dead && !x.down && !x.sur)) continue;   // the leader sends a man
+    if (o.ai.esc && o.ai.esc.length >= PRIS.per) continue;
+    if (!los(o, eyeY(o), m, eyeY(m))) continue;
+    bd = d; best = o;
+  }
+  return best;
+}
+function percSaw(m, r) {
+  const l = [], q = m.sq, ey = eyeY(m);
+  for (const o of q ? q.men : []) if (o !== m && !o.dead && !o.sur && !o.gone && hdist(o, m) < BRAIN.sinal) l.push({ u: o, x: o.x, z: o.z, c: 'inf', how: 'esquadra' });
+  for (const o of S.men) {
+    if (o === m || o.team !== m.team || o.dead || o.sur || o.in || o.gone || (q && o.sq === q) || Math.abs(o.x - m.x) > r || Math.abs(o.z - m.z) > r || hdist(o, m) > r) continue;
+    if (los(m, ey, o, eyeY(o))) l.push({ u: o, x: o.x, z: o.z, c: 'inf', how: 'viu' });
+  }
+  for (const u of S.units) {
+    if (u.team !== m.team || u.dead || Math.abs(u.x - m.x) > r || Math.abs(u.z - m.z) > r || hdist(u, m) > r) continue;
+    if (los(m, ey, u, (u.y || hgt(u.x, u.z)) + 1.5)) l.push({ u, x: u.x, z: u.z, c: tk(u), how: 'viu' });
+  }
+  return l;
+}
+/* ---------- CEREBRO: prisioneiros (P4, cf-p4-prisioneiros; NÃO TESTADO, see docs/nao-testado/cf-p4-prisioneiros.md) ----------
+   The rest of the prisoners, over P1's minimum (CEREBRO: soldado: surrender as a state of morale, RENDIDO/PRISIONEIRO, taken by an enemy
+   within 5 m for 2 s). With PRIS.on the captors follow the field manual's 5 S (search, silence, segregate, safeguard, speed to the rear)
+   with an escort, and what the prisoner knew reaches the captor's general only by questioning at the rear:
+   - The escort: every PRIS.every s a man who surrendered with no escort gets one: an escort within PRIS.near m of him who has room
+     (PRIS.per prisoners at most), else the nearest captor who sees him (percGuard, PRIS.see m). The escort walks to him ("Mãos ao alto!"
+     is P1's, when he takes him) and his squad's leader hears it (the contract's report 'prisioneiro').
+   - Search (revistar): the escort stands by him (within PRIS.at m) for PRIS.rev s: his weapons and grenades are taken ("Mãos na cabeça!").
+     A player who takes one searches him at once.
+   - Silence (silenciar): a prisoner says nothing (brainSay holds his lines).
+   - Segregate (separar): prisoners walk PRIS.gap m apart, a squad leader PRIS.lidGap m from the others.
+   - Safeguard (proteger): out of the fight as P1 has it (down: nobody aims at him); an escort under fire or in a reflex of his own looks
+     after himself first and the prisoners stand still meanwhile (PRIS.calm). With no escort for PRIS.lone s and no captor he perceives
+     within PRIS.free m, he is only a man who surrendered again (P1: with no enemy near for a while he takes up arms; he was searched, so
+     he goes for a fallen mate's rifle).
+   - Speed to the rear (levar à retaguarda): the prisoner walks ahead, toward his captors' nearest base or HQ (prisDest: the main base, the
+     command net's HQ while it stands), the escort PRIS.behind m behind him. After PRIS.hand m, or within PRIS.rear m of the base, he is
+     handed to the rear (ph 'ret': the escort goes back to his squad, the prisoner walks on for PRIS.out s and leaves the battle as P1's did).
+     A player escorts the same way: the prisoner follows him; within PRIS.rear m of a base or HQ he is handed in; a player who walks
+     PRIS.leave m away from him (or gets into a vehicle, or falls) hands him to the rear where he stands.
+   - Questioning (interrogatório): at the base, PRIS.int s after he gets there (the trip from where he was handed to the rear at PRIS.v m/s,
+     within PRIS.trip), the captor's general gets what the prisoner knew WHEN HE WAS TAKEN (prisKnew, at capture): his squad's men within
+     the reach of a hand signal and what of his side he could see from there (percSaw), each where it was then, PRIS.err m off at most (a
+     hash, no chance); his squad's order and its leader's method (q.ord, q.bb.ord, q.bb.plano); how many of the captor's positions his
+     squad's board had (q.bb.cont). Never anything he did not know. The positions go in as sightings of that moment (seeBy at the capture's
+     time: aged) and stay in the general's picture (C.known) for PRIS.life s from the questioning, past CMD.mem, marked 'interrogatorio'
+     (S.prisD.intel, the general's view and the MCP's state). A line in the diary and the brain event 'interrogatorio'.
+   - The rules of war (README, "Civis e as regras da guerra"): killing a man who surrendered or a prisoner is a war crime with the weight
+     of a civilian's death: PRIS.toll tickets to the killer's side (CIV.toll), the feed and both diaries say it, and the brain event 'crime'.
+   PRIS.on 0: P1's minimum as it was. Only where the battle is simulated (a guest sees RENDIDO and PRISIONEIRO from the host) */
+const PRIS = { on: 1, every: 1, see: 80, near: 12, per: 3, at: 3.2, rev: 3, calm: .45, gap: 4, lidGap: 9, behind: 3.5, hand: 80, rear: 90, out: 20, leave: 45,
+  v: 6, trip: [20, 150], int: 20, life: 300, lone: 20, free: 60, err: 10, saw: 300, walk: .9, toll: CIV.toll };
+Object.assign(FALAS, { revista: { c: 'hands', p: 2, cat: 'ordem', v: [() => 'Mãos na cabeça!', () => 'Revistando!', () => 'Fica quieto aí!'] },
+  escolta: { c: 'hands', p: 1, cat: 'ordem', v: [() => 'Anda! Pra retaguarda!', () => 'Vamos, anda!', () => 'Sem conversa, anda!'] } });
+/* the side's records: the captives (l), the questionings on their way (q), what each side learnt (intel), counts by side (n) and crimes (cr) */
+const prisD = () => S.prisD || (S.prisD = { l: [], q: [], intel: {}, n: {}, cr: {}, info: [] });
+const prisN = t => { const D = prisD(); return D.n[t] || (D.n[t] = { taken: 0, lost: 0, int: 0 }); };
+const prisOk = e => !!e && !e.dead && !e.down && !e.in && !e.sur;
+/* where side t questions prisoners: the nearest of its main base and its HQ (while it stands) to p */
+function prisDest(t, p) {
+  const l = [], B = S.base && S.base[t], N = S.cn, H = N && N.hq && N.hq[t];
+  if (B) l.push({ x: B.x, z: B.z, k: 'base' });
+  if (H && H.st !== 'down' && H.x !== undefined) l.push({ x: H.x, z: H.z, k: 'QG' });
+  let b = null, bd = Infinity; for (const o of l) { const d = hdist(o, p); if (d < bd) { bd = d; b = o; } }
+  return b || { x: p.x, z: p.z, k: 'aqui' };
+}
+/* what the prisoner knew when he was taken (his squad's board at that moment) */
+function prisKnew(m) {
+  const q = m.sq, B = q && q.bb, O = q && q.ord, bo = B && B.ord, ba = bo && (bo.area || bo.alvo);
+  return { T: S.t, l: percSaw(m, PRIS.saw), sq: q ? sqName(q) : null, lid: !!(m.sur && m.sur.lid),
+    ord: O && O.x !== undefined ? { k: O.k, x: O.x, z: O.z } : ba ? { k: bo.k, x: ba.x, z: ba.z } : null,
+    plano: B && B.plano ? B.plano.proc || null : null, cont: B && B.cont ? B.cont.size : 0 };
+}
+function prisSetEsc(m, R, e) {
+  const o = R.esc; if (o && o.ai && o.ai.esc) { const i = o.ai.esc.indexOf(m); if (i >= 0) o.ai.esc.splice(i, 1); if (!o.ai.esc.length) o.ai.esc = null; }
+  R.esc = e || null;
+  if (e && e.ai && !(e.ai.esc || (e.ai.esc = [])).includes(m)) e.ai.esc.push(m);
+}
+/* one who surrendered with no escort: one is sent (the escort near with room, else the nearest captor who sees him) */
+function prisCall(m, R) {
+  const D = prisD(); if (!D.l.includes(m)) D.l.push(m);
+  if (R.lid === undefined) R.lid = !!(m.sq && (m.sq.lid === m || m.sq.lidV === m));
+  if (R.esc && (!prisOk(R.esc) || hdist(R.esc, m) > PRIS.see * 1.5)) prisSetEsc(m, R, null);
+  if (R.esc || S.t < (R.cT || 0)) return;
+  R.cT = S.t + PRIS.every;
+  let e = null;
+  for (const p of D.l) { const E = p !== m && p.sur && p.sur.esc; if (E && E.ai && E.team !== m.team && prisOk(E) && hdist(p, m) < PRIS.near && (E.ai.esc || []).length < PRIS.per) { e = E; break; } }
+  e = e || percGuard(m, PRIS.see);
+  if (!e) return;
+  prisSetEsc(m, R, e); brEv('escoltar', e, { d: Math.round(hdist(e, m)) });
+}
+/* taken (P1's capture): the 5 S begin. What he knew is fixed now */
+function prisTaken(m, R) {
+  const by = R.by, t = by.team, e = by.ai && R.esc && R.esc.team === t && prisOk(R.esc) ? R.esc : by;   // a player who takes him escorts him himself
+  R.ph = 'rev'; R.revT = 0; R.loneT = 0; R.k = null; R.K = prisKnew(m); R.dest = prisDest(t, m); R.p0 = { x: m.x, z: m.z };
+  prisSetEsc(m, R, e);
+  prisN(t).taken++; prisN(m.team).lost++;
+  if (!e.ai) { prisSearch(m, R); R.ph = 'leva'; if (e === S.my) S.floats.push({ x: m.x, y: m.y + 5, z: m.z, text: 'Leve-o à base ou ao QG (' + Math.round(hdist(m, R.dest)) + ' m)', life: 4 }); }
+  else if (e.sq) brainRel(e.sq, rel('prisioneiro', e, { x: m.x, z: m.z, n: 1 }));
+}
+/* search: his arms and grenades taken */
+function prisSearch(m, R) {
+  R.rev = 1; m.nades = 0; for (const a of m.arms || []) if (a) { a.mag = 0; a.res = 0; }
+}
+/* handed to the rear: the escort goes back; the questioning is due when he gets to the base and is questioned */
+function prisRear(m, R, at) {
+  const by = R.by, t = by.team, d = at ? 0 : hdist(m, R.dest);
+  prisSetEsc(m, R, null); R.ph = 'ret'; R.retT = S.t;
+  if (R.K) { prisD().q.push({ m, t, K: R.K, due: S.t + (at ? 0 : clamp(d / PRIS.v, PRIS.trip[0], PRIS.trip[1])) + PRIS.int, at: R.dest, from: m.team }); R.K = null; }
+  brEv('retaguarda', m, { by: t, base: at ? 1 : 0 });
+  if (by === S.my) S.floats.push({ x: m.x, y: m.y + 5, z: m.z, text: at ? 'Prisioneiro entregue: interrogatório em ' + PRIS.int + ' s' : 'Prisioneiro levado à retaguarda', life: 3 });
+}
+/* each beat of a prisoner (in place of P1's walk): the escort's searches and walks, the hand-over, alone */
+function prisStep(m, R) {
+  const c = m.ctl;
+  c.mx = c.mz = 0; c.fire = c.ads = c.run = false; c.nade = 0; c.aim = null; c.st = 0; m.st = 0; m.tr = 1;
+  if (!R.ph) { if (!R.by) { R.st = 1; return; } prisTaken(m, R); }
+  if (R.ph === 'ret') {
+    prisWalk(m, R, R.dest, PRIS.walk);
+    if (S.t - R.retT > PRIS.out) { const by = R.by; m.sur = null; killMan(m, by); m.gone = true; }
+    return;
+  }
+  let e = R.esc;
+  if (e && !e.ai) {   // a player escorts: the prisoner follows him; at a base or HQ, handed in; left behind (or the player in a vehicle, or down), handed to the rear
+    if (!prisOk(e) || hdist(e, m) > PRIS.leave) return prisRear(m, R, false);
+    R.dest = prisDest(R.by.team, m);
+    if (hdist(m, R.dest) < PRIS.rear) return prisRear(m, R, true);
+    if (hdist(e, m) > PRIS.behind + 1) prisWalk(m, R, e, hdist(e, m) > 12 ? 1 : PRIS.walk);
+    return;
+  }
+  if (!prisOk(e) || !(e.ai.esc && e.ai.esc.includes(m))) {   // no escort: another captor who sees him, else he waits; then he is on his own
+    if (e) prisSetEsc(m, R, null);
+    if (S.t >= (R.cT || 0)) { R.cT = S.t + PRIS.every; const o = percGuard(m, PRIS.see); if (o && o.team === R.by.team) { prisSetEsc(m, R, o); R.loneT = 0; return; } }
+    R.loneT = R.loneT || S.t;
+    if (S.t - R.loneT > PRIS.lone && !percFoes(m, PRIS.free).n) { m.sur = { st: 1, t: S.t, by: null, hT: 0, free: S.t, lid: R.lid, rev: R.rev }; prisSetEsc(m, R, null); brEv('solto', m, {}); }
+    return;
+  }
+  R.loneT = 0;
+  if (R.ph === 'rev') return;   // the escort searches him (prisGuard)
+  const calm = !(e.rf && e.rf.k && S.t <= (e.rf.ate || 0)) && !(e.mo && e.mo.s > PRIS.calm);
+  if (!calm || hdist(e, m) > PRIS.behind * 3) return;   // the escort looks after himself, or lags: he waits
+  if (hdist(m, R.dest) < PRIS.rear) return prisRear(m, R, true);
+  if (hdist(m, R.p0) > PRIS.hand) return prisRear(m, R, false);
+  prisWalk(m, R, R.dest, PRIS.walk);
+}
+/* a prisoner's walk toward p, kept apart from the other prisoners (segregate: a leader farther) */
+function prisWalk(m, R, p, k) {
+  const c = m.ctl; let dx = p.x - m.x, dz = p.z - m.z; const l = Math.hypot(dx, dz) || 1; dx /= l; dz /= l;
+  let sx = 0, sz = 0;
+  for (const o of prisD().l) {
+    if (o === m || !o.sur || o.dead || o.sur.st !== 2) continue;
+    const g = R.lid || o.sur.lid ? PRIS.lidGap : PRIS.gap, ox = m.x - o.x, oz = m.z - o.z, d = Math.hypot(ox, oz);
+    if (d < g && d > .01) { sx += ox / d * (1 - d / g); sz += oz / d * (1 - d / g); }
+  }
+  dx += sx * 1.5; dz += sz * 1.5; const n = Math.hypot(dx, dz) || 1;
+  c.mx = dx / n * k; c.mz = dz / n * k;
+}
+brCaptive = (f => m => {
+  if (!PRIS.on) return f(m);
+  const R = m.sur;
+  if (R.st === 1) { prisCall(m, R); f(m); if (m.sur === R && R.st === 2) { if (!R.ph) prisTaken(m, R); } else if (!m.sur) prisSetEsc(m, R, null); return; }
+  prisStep(m, R);
+})(brCaptive);
+/* the escort, after the rest of his mind: to the man who surrendered, by him for the search, behind the prisoners on the walk */
+function prisGuard(e, A) {
+  A.esc = A.esc.filter(p => p.sur && !p.dead && p.sur.esc === e && p.sur.ph !== 'ret'); if (!A.esc.length) { A.esc = null; return; }
+  if (e.down || e.in || e.sur) { for (const p of A.esc.slice()) prisSetEsc(p, p.sur, null); A.esc = null; return; }
+  if ((e.rf && e.rf.k && S.t <= (e.rf.ate || 0)) || (e.mo && e.mo.s > PRIS.calm) || (e.ut && e.ut.k !== 'cumprir')) return;   // he looks after himself first
+  const p = A.esc.find(o => o.sur.ph === 'rev') || A.esc.find(o => o.sur.st === 1) || A.esc[0], R = p.sur, d = hdist(e, p);
+  if (R.st === 1 || R.ph === 'rev') {
+    brGo(e, { x: p.x, z: p.z }, d > 8, 1, .7);   // the old walk stops 1.5 m short of its goal: by him
+    if (R.ph === 'rev' && d < PRIS.at) {
+      if (!R.revT) { R.revT = S.t; brEv('revistar', e, {}); fala(e, 'revista'); }
+      else if (S.t - R.revT >= PRIS.rev) { prisSearch(p, R); R.ph = 'leva'; brEv('escoltar', e, { n: A.esc.length }); fala(e, 'escolta'); }
+    }
+    return;
+  }
+  let cx = 0, cz = 0, n = 0; for (const o of A.esc) if (o.sur.ph === 'leva') { cx += o.x; cz += o.z; n++; }
+  if (!n) return;
+  cx /= n; cz /= n; const T = R.dest || p, dx = T.x - cx, dz = T.z - cz, l = Math.hypot(dx, dz) || 1, at = { x: cx - dx / l * PRIS.behind, z: cz - dz / l * PRIS.behind };
+  brGo(e, at, hdist(e, at) > 4, 1, .7);
+}
+aiMan = (g => (m, dt) => { g(m, dt); const A = m.ai; if (PRIS.on && A && A.esc && !m.net && !m.dead && BRAIN.on) prisGuard(m, A); })(aiMan);
+/* silence: a prisoner says nothing */
+brainSay = (f => (m, k, d) => (PRIS.on && m && m.sur && m.sur.st === 2 ? null : f(m, k, d)))(brainSay);
+/* questioning, at the base: what he knew when taken, aged, to the captor's general */
+function prisTell(E) {
+  const D = prisD(), t = E.t, K = E.K, e = PRIS.err, s = (E.m && E.m.ai && E.m.ai.seed) || 1, l = [];
+  let i = 0;
+  for (const k of K.l) {
+    i++; if (k.u.dead) continue;
+    const x = k.x + (hash2(i, 1, s) - .5) * 2 * e / Math.SQRT2, z = k.z + (hash2(i, 2, s) - .5) * 2 * e / Math.SQRT2;
+    seeBy(k.u, t, x, z, K.T); l.push({ u: k.u, x, z, tx: k.x, tz: k.z, c: k.c, how: k.how });
+  }
+  const I = { T: S.t, at: K.T, until: S.t + PRIS.life, l, ord: K.ord, plano: K.plano, cont: K.cont, sq: K.sq, from: E.from, src: 'interrogatorio' };
+  (D.intel[t] || (D.intel[t] = [])).push(I); if (D.intel[t].length > 12) D.intel[t].shift();
+  D.info.push(I); if (D.info.length > 40) D.info.shift();
+  prisN(t).int++;
+  const age = Math.round(S.t - K.T);
+  gLog(t, 'def', 'Interrogatório' + (K.sq ? ' (' + K.sq + ')' : '') + ': ' + l.length + (l.length === 1 ? ' posição inimiga' : ' posições inimigas') + ' de há ' + age + ' s'
+    + (K.ord ? ', a esquadra dele ia ' + (GEN.ord[K.ord.k] || K.ord.k) + ' ' + ecoNear(K.ord.x, K.ord.z) : '') + (K.cont ? '; sabiam de ' + K.cont + (K.cont === 1 ? ' posição nossa' : ' posições nossas') : ''), E.at, null, K.ord);
+  if (t === S.me && !S.demo) cqSay('Interrogatório: ' + l.length + (l.length === 1 ? ' posição inimiga' : ' posições inimigas') + ' (de há ' + age + ' s)', t);
+  brainEv('interrogatorio', t, { n: l.length, age, from: E.from });
+}
+/* the general's picture keeps what questioning gave it for PRIS.life s (past CMD.mem) */
+cmdSense = (g => (C, sq) => {
+  g(C, sq);
+  const D = S.prisD, L = PRIS.on && D && D.intel[C.t]; if (!L || !L.length) return;
+  for (const I of L) if (S.t < I.until) for (const k of I.l) if (!k.u.dead && !k.u.gone && !C.known.includes(k.u)) C.known.push(k.u);
+})(cmdSense);
+/* the questionings due, and the captives' list kept short */
+step = (g => dt => {
+  g(dt);
+  const D = S && S.prisD; if (!D || !PRIS.on || !brainSim() || S.t < (D.tT || 0)) return;
+  D.tT = S.t + .5;
+  for (let i = 0; i < D.q.length;) { const E = D.q[i]; if (E.due <= S.t) { D.q.splice(i, 1); prisTell(E); } else i++; }
+  D.l = D.l.filter(m => m.sur && !m.dead && !m.gone);
+})(step);
+/* the rules of war: one who surrendered, or a prisoner, killed by another side's fire */
+killMan = (f => (m, by) => {
+  const R = PRIS.on && !m.dead && m.sur && brainSim() ? m.sur : null;
+  f(m, by);
+  if (R && m.dead && by && civT(by.team) && by.team !== m.team) prisCrime(m, by, R);
+})(killMan);
+function prisCrime(m, by, R) {
+  const D = prisD(), t = by.team, paid = cqSim() && !S.cq.ph ? PRIS.toll : 0;
+  D.cr[t] = (D.cr[t] | 0) + 1; if (paid) S.cq.tk[t] -= paid;
+  if (R.esc) prisSetEsc(m, R, null);
+  const what = R.st === 2 ? 'um prisioneiro' : 'um soldado que se rendeu';
+  gLog(t, 'rep', 'Matamos ' + what + ': crime de guerra' + (paid ? ', −' + paid + ' tíquetes' : ''), m);
+  if (m.team !== t) gLog(m.team, 'rep', civSide(t) + ' matou ' + what + ' nosso', m);
+  cqSay(civSide(t) + ': ' + what + ' morto · crime de guerra' + (paid ? ' · −' + paid + ' tíquetes' : ''), t);
+  if (by === S.my && !S.demo) S.banner = { text: 'Crime de guerra', sub: 'Você matou ' + what + (paid ? ': −' + paid + ' tíquetes' : ''), life: 3 };
+  brainEv('crime', t, { st: R.st, tk: paid });
+}
+/* what side t knows of prisoners: the ones it holds (where, the step of the 5 S, the escort), how many it took and lost, what questioning
+   gave it (each position where it was at the capture, its age, how long the general keeps it), and the crimes */
+function prisView(t) {
+  const D = S && S.prisD; if (!D || !PRIS.on) return null;
+  const r = Math.round, held = [];
+  for (const m of D.l) {
+    const R = m.sur; if (!R || m.dead || R.st !== 2 || !R.by || R.by.team !== t) continue;
+    held.push(Object.assign({ x: r(m.x), z: r(m.z), ph: R.ph || 'rev', esc: R.esc ? (R.esc.ai ? 'ia' : 'jogador') : null, lid: R.lid ? 1 : 0 }, R.esc && { ex: r(R.esc.x), ez: r(R.esc.z) }, R.dest && { to: { x: r(R.dest.x), z: r(R.dest.z), k: R.dest.k } }));
+  }
+  const intel = (D.intel[t] || []).filter(I => S.t < I.until).map(I => ({ T: r(I.T), age: r(S.t - I.at), left: r(I.until - S.t), sq: I.sq, n: I.l.length, ord: I.ord, plano: I.plano, cont: I.cont, src: I.src,
+    l: I.l.map(k => ({ x: r(k.x), z: r(k.z), c: k.c })) }));
+  const n = prisN(t), q = D.q.filter(E => E.t === t).length;
+  return { held, intel, taken: n.taken, lost: n.lost, questioned: n.int, waiting: q, crime: D.cr[t] | 0, foeCrime: Object.keys(D.cr).reduce((a, s) => a + (+s !== t ? D.cr[s] : 0), 0), toll: PRIS.toll };
+}
+genVM = (g => (t, all) => { const V = g(t, all), p = V && typeof V === 'object' ? prisView(t) : null; if (p) V.pris = p; return V; })(genVM);   // a guest keeps the host's (gen)
+genState = (g => t => { const o = g(t); if (o) o.pris = prisView(t); return o; })(genState);
+GENK.push('pris');   // a guest's general sees the host's prisoners and questionings
+/* the unit card: the squad's escorts and the prisoners they hold */
+genCard = (f => (t, id) => {
+  const c = f(t, id); if (!c || !PRIS.on) return c;
+  const q = S.squads.find(o => o.team === t && o.id === id); if (!q) return c;
+  let e = 0, p = 0; for (const m of q.men) if (!m.dead && m.ai && m.ai.esc && m.ai.esc.length) { e++; p += m.ai.esc.length; }
+  if (e) { c.decide.push((e === 1 ? '1 homem escoltando ' : e + ' homens escoltando ') + p + (p === 1 ? ' prisioneiro' : ' prisioneiros') + ' para a retaguarda'); c.esc = { men: e, pris: p }; }
+  return c;
+})(genCard);
+/* ---------- end of CEREBRO: prisioneiros ---------- */
 /* ---------- the medic (cf-medico; NÃO TESTADO, see docs/nao-testado/cf-medico.md): the kits and the squads here; the brain's part below (CEREBRO: medico), then the player's treatment, the net and the unit card ----------
    The medic (padioleiro, enfermeiro de combate): a kit of every side of every era (med: 1), and what the soldiers' brain does with him. Only
    by hooks on what was there: the wounded (WND: manDown, downAI, sqRescue, rescue), their evacuation (REC, W18), the calls (P5), the position
@@ -34338,7 +34689,7 @@ function sanKnows(o, d) {
   if (h !== undefined && S.t - h < SAN.hear) return true;
   const r = hdist(o, d); return r < SAN.near || (r < SAN.see && los(o, eyeY(o), d, bodyY(d)));
 }
-const sanFree = o => !!o && !!o.def.med && !o.dead && !o.gone && !o.down && !o.sur && !!o.ai && !o.net && !o.in && !o.ai.rsc && (o.bnd | 0) > 0;
+const sanFree = o => !!o && !!o.def.med && !o.dead && !o.gone && !o.down && !o.sur && !!o.ai && !o.net && !o.in && !o.ai.rsc && !o.ai.esc && (o.bnd | 0) > 0;
 const sanGo = (m, d) => { const A = m.ai; A.rsc = d; A.rst = 0; A.rT = S.t; A.rsm = 0; A.ccp = null; A.hl = null; d.resc = m; };
 const sanSay = (m, k, d) => { if (!brainSim() || !m || !m.ai || m.net || m.dead) return null; flCb(m, (FALAS[k] && FALAS[k].cat) || 'relato', { f: k, de: 'medico' }); return brainSay(m, k, d || {}); };
 Object.assign(FALAS, {
@@ -34449,7 +34800,7 @@ aiMan = (g => (m, dt) => {
   g(m, dt);
   if (!m.def.med || !sanOn() || !m.ai || m.net || m.in || m.dead || m.down || m.sur) return;
   const A = m.ai, c = m.ctl;
-  if (A.rsc) { A.hl = null; return; }
+  if (A.rsc || A.esc) { A.hl = null; return; }   // fetching a man down, or escorting a prisoner (P4)
   if (m.rf && m.rf.k && S.t <= (m.rf.ate || 0)) return;   // a reflex has him (a grenade): the rest waits
   if (A.ccp) { if (sanDrag(m, A, c)) return; A.ccp = null; }
   sanHeal(m, A, c);
@@ -35771,7 +36122,14 @@ function updateCamera(dt) {
     const a = S.aim.d, e = eye(p, a), d = seat && !seat.free ? f : a;
     camera.up.set(0, 1, 0);
     if (p.dead) camera.lookAt(p.x, p.y + 3, p.z);
-    else { cp.set(e.x, e.y, e.z); camera.lookAt(cp.x + d.x * 100, cp.y + d.y * 100, cp.z + d.z * 100); camera.fov = seat ? seat.fov[zoomOf(seat)] : 58 + Math.min(14, Math.abs(p.sp || 0) * .5); }
+    else {
+      cp.set(e.x, e.y, e.z); camera.lookAt(cp.x + d.x * 100, cp.y + d.y * 100, cp.z + d.z * 100);
+      const tf = seat ? seat.fov[zoomOf(seat)] : 58 + Math.min(14, Math.abs(p.sp || 0) * .5);
+      if (seat && seat.zs) {   // a car's seat eases its zoom in and out, from the view it was in
+        camSt.fz = camSt.fz ? camSt.fz + (tf - camSt.fz) * (1 - Math.exp(-dt * 9)) : tf; camera.fov = camSt.fz; camSt.sens = camera.fov / 58;
+        if (camSt.zc === 2 && tf - camSt.fz < 3) { camSt.mode = 0; camSt.zc = 0; }
+      } else { camera.fov = tf; camSt.fz = camera.fov; }
+    }
     if (seat) {   // the gun's recoil kicks the sight up; automatic fire and hits rattle it
       const a0 = p.arms[0], a1 = p.arms[1], ts = S.t - a0.t, big = a0.d.k === 'shell' || a0.d.k === 'how', fr = camera.fov / 57.3;
       const j = (S.shake * .012 + (big ? (ts < .3 ? .012 * (1 - ts / .3) : 0) : ts < .1 ? .0035 : 0) + (a1 && S.t - a1.t < .1 ? .003 : 0) + hit * .02) * fr * calm;
@@ -36863,14 +37221,19 @@ const SEAT = {
 };
 /* the seats of what the player is in, in the order C steps through them after the chase view */
 const seatsOf = P => (P.man ? (P.def.mort ? ['inf', 'fcm'] : ['inf']) : P.kind === 'tank' ? [S.modern ? 'gunnerM' : 'gunner', 'cmd'] : P.kind === 'art' ? [S.modern ? 'gunnerM' : 'gunner', 'fcm'] : P.kind === 'aa' ? [S.modern ? 'eo' : 'ring'] : P.def.seat ? [P.def.seat] : P.def.prop ? ['prop'] : ['jet', 'jetc']);
-/* M: to the fire-control map and back to the view it was called from */
-function mapKey() { const P = S.my, i = P ? seatsOf(P).indexOf('fcm') + 1 : 0; if (i) camSt.mode = camSt.mode === i ? camSt.back || 0 : ((camSt.back = camSt.mode), i); }
+/* M: to the fire-control map and back to the view it was called from, where the seat has one (artillery, rocket launcher, mortar);
+   anywhere else the battle map (bmSet, cf-tecla-mapa) */
+function mapKey() { const P = S.my, i = P ? seatsOf(P).indexOf('fcm') + 1 : 0; if (i) { bmSet(false); camSt.mode = camSt.mode === i ? camSt.back || 0 : ((camSt.back = camSt.mode), i); } else bmSet(!BM.on); }
 function curSeat() { const P = S.my; if (!P || S.demo || !camSt.mode) return null; const l = seatsOf(P); return SEAT[l[Math.min(camSt.mode, l.length) - 1]]; }
 const zoomOf = s => Math.min(camSt.zoom, s.fov.length - 1);
-function nextCam() { if (S.my) camSt.mode = (Math.min(camSt.mode, seatsOf(S.my).length) + 1) % (seatsOf(S.my).length + 1); }
+function nextCam() { camSt.zc = 0; if (S.my) camSt.mode = (Math.min(camSt.mode, seatsOf(S.my).length) + 1) % (seatsOf(S.my).length + 1); }
 const HZ = [0, 24, 9, 3.5];   // helicopter sight: field of view per zoom step, 0 = the ordinary view
 const PZ = [0, 30, 14];   // planes: field of view per zoom step, 0 = the ordinary view
-function zoomBy(n) { if (scopeZoom(n)) return; if (S.my && S.my.q && !S.my.heli) { const z = camSt.pz || 0; camSt.pz = n ? clamp(z + n, 0, PZ.length - 1) : (z + 1) % PZ.length; return; } if (S.my && S.my.heli) { const z = camSt.hz || 0; camSt.hz = n ? clamp(z + n, 0, HZ.length - 1) : (z + 1) % HZ.length; return; } const s = curSeat(); if (s && s.fov.length > 1) camSt.zoom = n ? clamp(zoomOf(s) + n, 0, s.fov.length - 1) : (zoomOf(s) + 1) % s.fov.length; }
+function zoomBy(n) { if (scopeZoom(n)) return; if (S.my && S.my.q && !S.my.heli) { const z = camSt.pz || 0; camSt.pz = n ? clamp(z + n, 0, PZ.length - 1) : (z + 1) % PZ.length; return; } if (S.my && S.my.heli) { const z = camSt.hz || 0; camSt.hz = n ? clamp(z + n, 0, HZ.length - 1) : (z + 1) % HZ.length; return; } const P = S.my, l = P && !P.dead && !P.man && P.kind && !S.demo ? seatsOf(P) : null;
+  if (l && l.length === 1 && SEAT[l[0]] && SEAT[l[0]].zs && !camSt.mode) { if (n < 0) return; camSt.mode = 1; camSt.zoom = 1; camSt.zc = 1; return; }   // a car's chase view: into its sight at the first step
+  const s = curSeat(); if (s && s.fov.length > 1) camSt.zoom = n ? clamp(zoomOf(s) + n, 0, s.fov.length - 1) : (zoomOf(s) + 1) % s.fov.length;
+  if (s && s.zs && camSt.zc) camSt.zc = zoomOf(s) ? 1 : 2;   // back out to the plain seat: it eases out, then the chase view (updateCamera)
+}
 
 /* the player's own instruments, by what they are in: sights first, then the panel on the left and the warnings.
    In a seat the sight and the flight path are the seat's own, and its instruments stand in for the panel when they are big enough to read */
@@ -37531,9 +37894,9 @@ function trnUi() {
       spec: a.mag + ' tiros por pente · ' + Math.round(60 / a.rate) + ' tiros/min · luneta de ' + a.zoom.map(z => Math.round(62 / z) + '×').join(' e '),
       arm: a.name + ' · ' + d.arms[1].name + '. ' + (a.am ? 'Calibre .50: fura veículos leves, peça por peça, e os lados e a traseira dos blindados sobre rodas; nada contra tanque.' : 'Mortal contra infantaria; não faz nada em veículo.') };
   };
-  for (const id in TRNS) {   // the first-person seat of each: the gunner's sight of a turret, the eye behind a car's gun, or the driver's
-    const d = TRNS[id], p = d.lay[0]; if (d.seat) continue;
-    SEAT[(d.seat = 'drv_' + id)] = { fov: [72], eye: { t: d.arms[0].dmg ? [d.tx - 1.6, .8, 0] : [p[0] * GS - .2, (p[1] + 1) * GS + 1.5 - d.mh, p[2] * GS] }, body: 1, free: 1, draw() {} };
+  for (const id of Object.getOwnPropertyNames(TRNS)) {   // the first-person seat of each: the gunner's sight of a turret, the eye behind a car's gun, or the driver's
+    const d = TRNS[id], p = d.lay[0], arm = !!d.arms[0].dmg; if (d.seat) continue;
+    SEAT[(d.seat = 'drv_' + id)] = { fov: arm ? DZ.arm : DZ.look, zs: 1, eye: { t: arm ? [d.tx - 1.6, .8, 0] : [p[0] * GS - .2, (p[1] + 1) * GS + 1.5 - d.mh, p[2] * GS] }, body: 1, free: 1, draw: (P, u, ink) => drvZoomTxt(arm, u, ink) };
   }
 }
 function trnRows(k, d, pvp, swapRow) {
@@ -37557,9 +37920,15 @@ function trnRows(k, d, pvp, swapRow) {
   if (SMOKE.n[d.kind]) rows.push(['G', 'Granadas de fumaça, ' + SMOKE.n[d.kind] + ' salvas']);
   rows.push(['T', 'Segure com o veículo parado: a tripulação apaga o fogo e conserta uma peça por vez'], ['I', 'Prioridade do conserto: motor e rodagem primeiro, ou armamento primeiro'], ['C', 'Trocar a visão: externa e ' + (d.t ? 'luneta do atirador' : a0.dmg ? 'atrás da metralhadora' : 'banco do motorista')]);
   if (d.t) rows.push(['Roda do mouse ou R', 'Aproximar e afastar a luneta']);
+  else rows.push(['Roda do mouse ou R', a0.dmg ? 'Zoom da mira da arma, 2× e 4×. Da visão externa entra direto na mira; afastar de volta sai dela' : 'Binóculo do motorista, 6×. Da visão externa entra direto; afastar de volta sai dele']);
   rows.push(swapRow, esc);
   return rows;
 }
+/* the zoom of a car's, a truck's or a technical's seat (drv_): field of view per step, the first the plain seat. arm: behind its gun, the
+   weapon's sight at 2x and 4x (58 / fov, as the tank sights count); look: no gun, the driver's binoculars at 6x. R or the wheel from the
+   chase view goes straight into the seat at the first step, and zooming back out of it returns to the chase view (camSt.zc) */
+const DZ = { arm: [72, 29, 14.5], look: [72, 9.7] };
+function drvZoomTxt(arm, u, ink) { if (camera.fov < 50) txt((arm ? 'MIRA ×' : 'BINÓCULO ×') + Math.round(58 / camera.fov), cw / 2, ch / 2 + 46 * u, 12 * u, ink, 'center'); }
 /* the scope: both zooms are the camera's field of view, and the view wanders with the muzzle (sw), so the centre is where the round goes */
 const scoped = P => !!P && !!P.man && !P.dead && !P.in && !!P.arms[P.w].d.snp && P.ctl.ads;
 function scopeZoom(n) { if (!scoped(S.my)) return false; camSt.sz = n ? clamp((camSt.sz || 0) + n, 0, 1) : 1 - (camSt.sz || 0); return true; }
@@ -38100,10 +38469,12 @@ function buildHangar() {
     rad: k === 'inf' ? ['O', 'Pousar o rádio onde você está, ou recolher a menos de 4 m dele. Com ele nas costas você mesmo é o ponto de entrada da infantaria do seu lado; pousado, ele continua valendo enquanto você estiver a menos de ' + RAD.range + ' m e nenhum inimigo chegar a ' + RAD.near + ' m dele'] : ['O', 'Parado: levantar a antena (' + RAD.deploy + ' s) e virar ponto de entrada da infantaria, com ' + RAD.cap[2] + ' entradas e reabastecimento para quem está ao lado. Com a antena no alto o veículo não anda; O de novo recolhe'],
     req: ['U', 'A pé dentro de um depósito (a base principal, uma base de suprimento pronta ou um ponto seu com base de suprimento): requisitar um veículo ali mesmo. Custa tíquetes, menos do que perdê-lo, tem estoque por depósito e um intervalo de ' + RQ.cool + ' s; aeronaves só na base principal'],
     esc: ['Esc', 'Soltar o mouse' + (pvp ? '' : ' e pausar') + '. Clique no jogo para voltar'],
+    map: ['M', 'Mapa da batalha: o terreno, as estradas, os pontos e quem os tem, as bases, os rádios, as marcas do comandante e do general, o seu lado e o inimigo só como o seu lado o conhece. Roda ou + − aproxima, arrastar move, duplo clique centra em você, M ou Esc fecha. O jogo não pausa, as teclas continuam guiando e o clique no mapa não dispara'],
     gen: ['Tab', 'Visão de General: o mapa do comandante, suas ordens e o que ele pensa. O jogo continua enquanto o mapa está aberto'],
-    spc: ['Assistir', 'Assistir sem veículo: com gente na sala você a observa como espectador, com os dois generais à vista (Tab abre o mapa, V mostra tudo); sem ninguém, IA × IA neste computador. Câmera: F alterna automática, seguir e livre; [ ] trocam o alvo; W A S D e Q E movem a câmera livre, arrastar o mouse gira, a roda muda a velocidade, Shift acelera'] };
+    spc: ['Assistir', 'Assistir sem veículo: com gente na sala você a observa como espectador, com os dois generais à vista (Tab ou M abre o mapa, V mostra tudo); sem ninguém, IA × IA neste computador. Câmera: F alterna automática, seguir e livre; [ ] trocam o alvo; W A S D e Q E movem a câmera livre, arrastar o mouse gira, a roda muda a velocidade, Shift acelera'] };
   const dl = $('#keys'), text = (BRIEF[k] || BRIEF.plane)(d, o), cut = text.indexOf('. ') + 1 || text.length; dl.textContent = '';
-  for (const [key, v] of (LEGEND[k] || LEGEND.plane)(d, o).concat(d.rad ? [o.rad] : [], k === 'inf' || k === 'trn' ? [o.req] : [], skyKeys(), helpKeys(), [o.gen, o.spc])) { const dt = document.createElement('dt'), dd = document.createElement('dd'); dt.textContent = key; dd.textContent = v; dl.append(dt, dd); }
+  const lg = (LEGEND[k] || LEGEND.plane)(d, o);
+  for (const [key, v] of lg.concat(lg.some(r => r && r[0] === 'M') ? [] : [o.map], d.rad ? [o.rad] : [], k === 'inf' || k === 'trn' ? [o.req] : [], skyKeys(), helpKeys(), [o.gen, o.spc])) { const dt = document.createElement('dt'), dd = document.createElement('dd'); dt.textContent = key; dd.textContent = v; dl.append(dt, dd); }
   $('#briefing').textContent = text.slice(0, cut); $('#mission').textContent = text.slice(cut).trim() + ' ' + CQBRIEF(pvp, ECO.on);
   $('#btnInv').textContent = (k === 'heli' ? 'Cíclico' : 'Manche') + (invertY ? ': W puxa' : ': S puxa'); ffChip();
   for (const b of document.querySelectorAll('#ctrls .tab')) b.lastChild.textContent = CTRLTXT[k === 'heli' ? 1 : 0][b.dataset.ctrl === 'mouse' ? 1 : 0];
@@ -38247,7 +38618,7 @@ function launch(again) {
 let seated = null;
 fx.enter = P => {
   const d = P.def.base || P.def;
-  if (d !== seated) { if (P.kind || (seated && seated.arms)) camSt.mode = 0; camSt.zoom = camSt.back = camSt.hy = camSt.hp = 0; seated = d; }
+  if (d !== seated) { if (P.kind || (seated && seated.arms)) camSt.mode = 0; camSt.zoom = camSt.back = camSt.hy = camSt.hp = camSt.zc = 0; seated = d; }
   closeSwap();
   if (S.net) Net.ui.roster(); else $('#tag').textContent = ERAS[S.era].label + ' · ' + d.name;
   if (!S.aim && document.pointerLockElement) document.exitPointerLock();
@@ -38739,7 +39110,7 @@ addEventListener('blur', () => { if (S) S.input = {}; });
 document.addEventListener('visibilitychange', () => { if (document.hidden) setPause(true); });
 /* mouse aim: movement only counts while the pointer is locked to the canvas; the sim reads it from S.input */
 cv.addEventListener('mousedown', e => {
-  if (playMode !== 'play' || !S.aim || sw.on) return;
+  if (playMode !== 'play' || !S.aim || sw.on || BM.on) return;   // the battle map open: the mouse is the map's, never the trigger
   if (document.pointerLockElement !== cv) { if (paused) setPause(false); else lockPtr(); return; }
   if (e.button === 0) S.input.fire = true; else if (e.button === 2) S.input.ordA = true;
 });
@@ -38749,8 +39120,8 @@ document.addEventListener('mousemove', e => {
   if (document.pointerLockElement !== cv || !S.aim || paused) return;
   S.input.mx = (S.input.mx || 0) + e.movementX * camSt.sens; S.input.my = (S.input.my || 0) + e.movementY * camSt.sens;
 });
-addEventListener('wheel', e => { if (playMode !== 'play' || GV.on || paused || !e.deltaY || e.timeStamp - camSt.zt < 160) return; camSt.zt = e.timeStamp; zoomBy(e.deltaY < 0 ? 1 : -1); }, { passive: true });
-document.addEventListener('pointerlockchange', () => { if (document.pointerLockElement !== cv && playMode === 'play' && S.aim && !sw.on && !GV.on) { S.input = {}; setPause(true); } });
+addEventListener('wheel', e => { if (playMode !== 'play' || GV.on || BM.on || paused || !e.deltaY || e.timeStamp - camSt.zt < 160) return; camSt.zt = e.timeStamp; zoomBy(e.deltaY < 0 ? 1 : -1); }, { passive: true });
+document.addEventListener('pointerlockchange', () => { if (document.pointerLockElement !== cv && playMode === 'play' && S.aim && !sw.on && !GV.on && !BM.on) { S.input = {}; setPause(true); } });
 for (const b of touchEl.querySelectorAll('button')) {
   if (b.dataset.a) { b.addEventListener('pointerdown', e => { e.preventDefault(); TACT[b.dataset.a](); }); continue; }
   const set = v => e => { e.preventDefault(); if (S) S.input[b.dataset.k] = v; b.classList.toggle('on', v); };
@@ -39435,7 +39806,7 @@ function startWatch() {
   for (let i = 0; i < 240; i++) step(1 / 30);
   buildWorld();
   closeSwap(); hangar.hidden = true; overEl.hidden = true; touchEl.hidden = true; $('#btnPause').hidden = true; $('#btnCam').hidden = true; $('#btnSwap').hidden = true; $('#btnLeave').hidden = false;
-  $('#tag').textContent = 'IA contra IA · ' + ERAS[era].label + ' · Tab abre a Visão de General';
+  $('#tag').textContent = 'IA contra IA · ' + ERAS[era].label + ' · Tab ou M abre a Visão de General';
   GV.t = 0; GV.all = false; $('#genEnd').hidden = true; genOpen(true);
 }
 /* "Assistir": the room as a spectator when it has a player, else the AI × AI watch on this computer. One button (#btnWatch). The server
@@ -39443,7 +39814,7 @@ function startWatch() {
    at all, the local watch starts with the reason in the title line */
 function specLocal(msg) {
   Net.wantSpec = false; Net.close(); startWatch();
-  $('#tag').textContent = msg + ' · Tab abre a Visão de General'; netStatus(msg);
+  $('#tag').textContent = msg + ' · Tab ou M abre a Visão de General'; netStatus(msg);
 }
 function startSpec(again) {
   genOpen(false); Net.wantSpec = false;
@@ -39498,7 +39869,7 @@ $('#specHome').addEventListener('click', () => toHangar(''));
    period, Escape, Tab (1 and 2 stop switching sides while the seat is held: they recall groups). Touch is not supported for orders */
 const GOR = { S: null, sel: new Set(), mode: '', plan: null, H: GENC.Hdef, smk: 1, grp: {}, gT: {}, pend: [], toast: null, toastT: 0, asst: Object.assign({}, GEN.asst), box: null, dn: null, cur: null, bk: 'pow', ba: null,
   wy: '', wyT: 0, wyP: null, spots: [], spotK: '', tab: 'sit', sig: {}, rally: null, mark: null, opSel: 0, pn: {}, want: '', had: false, aq: [], aW: 0, aT: 0, hT: 0, keys0: '' };
-const GORK = { KeyG: 'move', KeyH: 'hold', KeyQ: 'atk', KeyE: 'amb', KeyR: 'recon', KeyT: 'he', KeyY: 'smk', KeyK: 'res', KeyC: 'ctr', KeyP: 'rally', KeyM: 'mark', KeyX: 'free', KeyB: 'build' };
+const GORK = { KeyG: 'move', KeyH: 'hold', KeyQ: 'atk', KeyE: 'amb', KeyR: 'recon', KeyT: 'he', KeyY: 'smk', KeyK: 'res', KeyC: 'ctr', KeyP: 'rally', KeyX: 'free', KeyB: 'build' };
 const GORT = { move: 'Clique no mapa: mover', hold: 'Clique num ponto ou no mapa: defender', atk: 'Clique no objetivo do assalto', amb: 'Clique junto a uma estrada: emboscada', recon: 'Clique no mapa: reconhecer',
   he: 'Clique no mapa: missão de fogo', smk: 'Clique no mapa: fumaça', res: 'Clique no mapa: a reserva avança', ctr: 'Clique no mapa: contra-ataque da reserva', rally: 'Clique no mapa: ponto de reunião (botão direito remove)',
   mark: 'Clique no mapa: marca para os pilotos (botão direito remove)' };
@@ -39749,6 +40120,7 @@ function gorKey(e) {
   if (c === 'KeyN') { gorTabN(); return true; }
   if (/^F[1-4]$/.test(c)) { if (!e.repeat) gorTab(GORTABS[+c[1] - 1]); return true; }
   if (e.shiftKey && (c === 'KeyM' || c === 'KeyK')) { if (!e.repeat) gorMode(c === 'KeyM' ? 'mis' : 'disp'); return true; }
+  if (e.shiftKey && c === 'KeyO') { if (!e.repeat) gorMode('mark'); return true; }   // M is the map (cf-tecla-mapa): the mark for the pilots went to Shift+O, O de objetivo
   if (GORK[c] && !e.shiftKey) { if (!e.repeat) gorMode(GORK[c]); return true; }
   return false;
 }
@@ -39819,7 +40191,7 @@ function gorBar() {
   gorSet('#genCmdP', 'hidden', !(seat && GOR.tab !== 'sit'));
   const keys = document.querySelector('.gen-keys');
   if (!GOR.keys0) GOR.keys0 = keys.textContent;
-  const kt = seat ? 'Clique/arraste: selecionar · Clique direito: ordem · Alt+arrastar ou WASD: mover o mapa · 1-9: grupos (Shift+número grava) · B: construir · U: rota · J: ordem ampla · O: fortificar · N ou F1-F4: abas · Shift+M: missão às selecionadas · Shift+K: despacho da reserva · Tab: fechar' : GOR.keys0;
+  const kt = seat ? 'Clique/arraste: selecionar · Clique direito: ordem · Alt+arrastar ou WASD: mover o mapa · 1-9: grupos (Shift+número grava) · B: construir · U: rota · J: ordem ampla · O: fortificar · Shift+O: marcar objetivo · N ou F1-F4: abas · Shift+M: missão às selecionadas · Shift+K: despacho da reserva · M ou Tab: fechar' : GOR.keys0;
   if (keys.textContent !== kt) keys.textContent = kt;
   gorSet('#genOrd', 'hidden', !seat);
   if (!seat) return;
@@ -42749,6 +43121,38 @@ function gTun(g, V, P) {
   g.restore();
 }
 GLAY.splice(Math.max(0, GLAY.findIndex(L => L.id === 'eng') + 1), 0, { id: 'tun', nm: 'Túneis', on: 1, draw: gTun });
+/* ---------- the prisoners on the general's map and the HUD (P4, cf-p4-prisioneiros; NÃO TESTADO, see docs/nao-testado/cf-p4-prisioneiros.md) ----------
+   The general's map (layer 'pris', V.pris from prisView, a guest's from the host): each prisoner the side holds (a ring with a P, a line to
+   his escort, the step of the 5 S) and what questioning gave it (dashed squares where each enemy was when the prisoner was taken, "por
+   interrogatório · há N s"). The HUD: near one who surrendered, how to take him; escorting, where to take him */
+function gPris(g, V, P) {
+  const X = V.pris; if (!X) return;
+  const own = gCol(V, V.t), amb = '#ffd84a', PH = { rev: 'revista', leva: 'escolta', ret: 'retaguarda' };
+  for (const h of X.held || []) {
+    if (!gOn(P, h.x, h.z, 30)) continue;
+    const x = P.X(h.x), y = P.Y(h.z);
+    if (h.ex !== undefined) gLine(g, x, y, P.X(h.ex), P.Y(h.ez), own, 1);
+    gRing(g, x, y, 5, own, 1.5); gTxt(g, 'P', x, y + 3.5, 9, own, 'center');
+    if (GV.lab) gTxt(g, 'PRISIONEIRO · ' + (PH[h.ph] || h.ph) + (h.esc === 'jogador' ? ' (jogador)' : ''), x, y - 8, 9, own, 'center');
+  }
+  for (const I of X.intel || []) {
+    let lab = null;
+    g.setLineDash([3, 3]); g.strokeStyle = amb; g.lineWidth = 1.2;
+    for (const p of I.l || []) { if (!gOn(P, p.x, p.z, 10)) continue; const x = P.X(p.x), y = P.Y(p.z); g.strokeRect(x - 4, y - 4, 8, 8); if (!lab) lab = [x, y]; }
+    g.setLineDash([]);
+    if (lab && GV.lab) gTxt(g, 'por interrogatório · há ' + I.age + ' s', lab[0] + 7, lab[1] - 6, 9, amb, 'left');
+  }
+}
+GLAY.splice(Math.max(0, GLAY.findIndex(L => L.id === 'unit')), 0, { id: 'pris', nm: 'Prisioneiros e interrogatórios', on: 1, draw: gPris });
+function prisHud() {
+  if (playMode !== 'play' || !S || !S.my || S.my.dead || GV.on || !PRIS.on) return;
+  const P = S.my, u = clamp(cw / 1000, .62, 1); let s = null;
+  const D = S.prisD, n = D ? D.l.filter(m => m.sur && m.sur.st === 2 && m.sur.esc === P && !m.dead).length : 0;
+  if (n) { const m = D.l.find(o => o.sur && o.sur.esc === P), R = m && m.sur; s = 'ESCOLTANDO ' + n + (n === 1 ? ' PRISIONEIRO' : ' PRISIONEIROS') + (R && R.dest ? ' · ' + (R.dest.k === 'QG' ? 'QG' : 'base') + ' a ' + Math.round(hdist(P, R.dest)) + ' m' : '') + ' · afaste-se ' + PRIS.leave + ' m para entregá-lo à retaguarda'; }
+  else if (!P.in) for (const g of S.men) if (g.sur && g.sur.st === 1 && !g.dead && g.team !== P.team && Math.abs(g.x - P.x) < 25 && Math.abs(g.z - P.z) < 25 && hdist(g, P) < 25) { s = 'INIMIGO RENDIDO · chegue a ' + SOLB.sur.take + ' m e espere ' + SOLB.sur.hold + ' s para capturá-lo'; break; }
+  if (s) txt(s, cw / 2, ch * .72, 12 * u, '#f0ecdc', 'center');
+}
+drawHud = (g => () => { g(); prisHud(); })(drawHud);
 /* the General's hand on a tunnel (O, the kind Túnel): a click near one of the side's tunnel mouths sends the selection (or those the general
    picks) through it; elsewhere the first click is the way in and the second the way out (Shift: the general picks the way out) */
 gorTarget = (g => (px, py, shift) => {
@@ -43342,8 +43746,8 @@ genKey = (g => e => {
 gorBar = (g => () => {
   g();
   if (!rtsOn()) return;
-  const keys = document.querySelector('.gen-keys'), kt = gorSeat() ? 'Clique/arraste: selecionar · Duplo clique: mesmo tipo · Clique direito: ordem (Shift+direito: fila de pontos) · WASD/bordas: mover · Roda: zoom · Meio ou Alt+arrastar: girar · F: foco · 1-9: grupos (Shift ou Ctrl+número grava) · \': mapa · Tab: fechar'
-    : 'Arraste ou WASD/bordas: mover · Roda: zoom · Meio ou Alt+arrastar: girar · [ ]: girar · PageUp/PageDown: inclinar · Home: visão geral · \': mapa · Tab: fechar';
+  const keys = document.querySelector('.gen-keys'), kt = gorSeat() ? 'Clique/arraste: selecionar · Duplo clique: mesmo tipo · Clique direito: ordem (Shift+direito: fila de pontos) · WASD/bordas: mover · Roda: zoom · Meio ou Alt+arrastar: girar · F: foco · 1-9: grupos (Shift ou Ctrl+número grava) · M ou \': mapa · Tab: fechar'
+    : 'Arraste ou WASD/bordas: mover · Roda: zoom · Meio ou Alt+arrastar: girar · [ ]: girar · PageUp/PageDown: inclinar · Home: visão geral · M ou \': mapa · Tab: fechar';
   if (keys && keys.textContent !== kt) keys.textContent = kt;
 })(gorBar);
 /* the scene: who is not seen is not drawn (the vehicles' models here, the soldiers in poseMan and the far specks in syncScene); no body of mine
@@ -43545,6 +43949,117 @@ function rtsMini(g, V) {
 Net.ui.refused = (f => code => { RTS.want = 0; f(code); })(Net.ui.refused);
 Net.ui.lost = (f => joined => { RTS.want = 0; f(joined); })(Net.ui.lost);
 /* ===== end of the commander's camera ===== */
+/* ---------- the battle map (M; cf-tecla-mapa, NOT TESTED: docs/nao-testado/cf-tecla-mapa.md) ----------
+   M opens a map for everyone. Artillery, rocket launcher and the mortar keep their fire-control map (mapKey above, the seat 'fcm');
+   every other seat gets this one: the ground from above, north up, with the roads, the towns, the points and who holds them, the bases,
+   the radios, the commander's and the general's marks (cueMarks), friends, and the enemy only as far as the player's side knows it
+   (spotted / sX / sZ / the side's ladder, fading as contact is lost), and the player with where he faces. Wheel or + − zoom about the
+   pointer, a drag moves it, a double click centres on the player. The game does not stop and the keys still drive the vehicle; the
+   mouse is let go while it is open, so a click on the map never fires. In the general's view (GV) M is the map too: from the
+   commander's camera it goes to the map table and back, from the map table opened by Tab it closes the view; watching, it opens it */
+const BM = { on: false, z: 1, cx: 0, cz: 0, drag: null, zMax: 14 };
+function bmSet(v) {
+  v = !!v; if (v === BM.on) return;
+  BM.on = v; BM.drag = null;
+  if (v) {
+    if (S) { BM.z = 1; BM.cx = S.W / 2; BM.cz = 0; if (S.input) { S.input.fire = false; S.input.ordA = false; S.input.mx = 0; S.input.my = 0; } }
+    if (document.pointerLockElement) document.exitPointerLock();
+  } else if (playMode === 'play' && !paused && !GV.on && !sw.on) lockPtr();
+}
+const bmS = () => Math.min(cw * .96 / S.W, ch * .9 / (2 * S.HW)) * BM.z;   // pixels per metre
+function bmClamp() { BM.z = clamp(BM.z, 1, BM.zMax); BM.cx = clamp(BM.cx, 0, S.W); BM.cz = clamp(BM.cz, -S.HW, S.HW); }
+function bmXY(e) { const r = cv.getBoundingClientRect(); return { x: (e.clientX - r.left) * cw / (r.width || 1), y: (e.clientY - r.top) * ch / (r.height || 1) }; }
+function bmZoom(k, px, py) {
+  const s = bmS(), x = px === undefined ? cw / 2 : px, y = py === undefined ? ch / 2 : py, wx = BM.cx + (x - cw / 2) / s, wz = BM.cz + (y - ch / 2) / s;
+  BM.z = clamp(BM.z * k, 1, BM.zMax); const s2 = bmS(); BM.cx = wx - (x - cw / 2) / s2; BM.cz = wz - (y - ch / 2) / s2; bmClamp();
+}
+const bmLive = () => BM.on && playMode === 'play' && !!S && !!S.my && !GV.on;
+function bmDraw() {
+  if (!BM.on) return;
+  if (playMode !== 'play' || !S || !S.my || GV.on) { BM.on = false; BM.drag = null; return; }
+  if (sw.on) return;
+  const P = S.my, me = P.team, u = clamp(cw / 1000, .62, 1), ink = S.modern ? '#c4f1f7' : '#f3ead2', acc = S.modern ? '#63d2e6' : '#e6b53a';
+  const disp = S.modern ? "'Chakra Petch', sans-serif" : "'Saira Stencil One', Impact, sans-serif";
+  hx.setTransform(dpr, 0, 0, dpr, 0, 0); hx.textBaseline = 'top'; hx.lineCap = 'round';
+  const s = bmS(), mpp = 1 / s, X = x => cw / 2 + (x - BM.cx) * s, Y = z => ch / 2 + (z - BM.cz) * s, on = (x, y) => x > -10 && x < cw + 10 && y > -10 && y < ch + 10, gs = mpp > 14 ? 2000 : mpp > 5 ? 1000 : 500;
+  const mark = (x, y, r, col, foe) => { hx.beginPath(); if (foe) { hx.moveTo(x, y - r); hx.lineTo(x + r, y); hx.lineTo(x, y + r); hx.lineTo(x - r, y); hx.closePath(); } else hx.rect(x - r * .8, y - r * .8, r * 1.6, r * 1.6); hx.fillStyle = col; hx.fill(); hx.strokeStyle = 'rgba(8,12,13,.9)'; hx.lineWidth = 1; hx.stroke(); };
+  if (!mapBig) mapBig = mapImg(720, true);
+  hx.fillStyle = 'rgba(12,18,19,.97)'; hx.fillRect(0, 0, cw, ch); hx.drawImage(mapBig, X(0), Y(-S.HW), S.W * s, 2 * S.HW * s);
+  hx.strokeStyle = 'rgba(8,12,13,.3)'; hx.lineWidth = 1; hx.beginPath();
+  for (let x = 0; x <= S.W; x += gs) { hx.moveTo(X(x), Y(-S.HW)); hx.lineTo(X(x), Y(S.HW)); }
+  for (let z = -S.HW; z <= S.HW; z += gs) { hx.moveTo(X(0), Y(z)); hx.lineTo(X(S.W), Y(z)); }
+  hx.stroke();
+  hx.strokeStyle = 'rgba(244,232,196,.9)'; hx.lineWidth = 1.6; drawRoads(hx, S.T, X, Y, hx.lineWidth);
+  drawTownNames(hx, X, Y, s, u, on);
+  for (const q of S.smokes) { hx.fillStyle = 'rgba(214,216,210,.55)'; hx.beginPath(); hx.arc(X(q.x), Y(q.z), Math.max(3, (q.r || SMOKE.r) * s), 0, TAU); hx.fill(); }
+  S.base.forEach((b, t) => { const x = X(b.x), y = Y(b.z); if (on(x, y)) { mark(x, y, 7, t !== me ? foeCol(t) : FRIEND, false); txt('BASE', x + 10, y - 6, 10 * u, t !== me ? foeCol(t) : FRIEND); } });
+  for (const b of S.sup) { const x = X(b.x), y = Y(b.z), col = b.team !== me ? foeCol(b.team) : FRIEND; if (!b.dead && (b.team === me || spotted(b, me)) && on(x, y)) { mark(x, y, 5, col, false); txt(b.prog < 1 ? 'OBRA' : 'SUPRIMENTO', x + 8, y - 6, 10 * u, col); } }
+  for (const b of S.eco ? S.eco.l : []) { const x = X(b.x), y = Y(b.z), col = b.team !== me ? foeCol(b.team) : FRIEND; if (!b.dead && (b.team === me || spotted(b, me)) && on(x, y)) { mark(x, y, 5, col, false); txt(b.prog < 1 ? 'OBRA' : { pow: 'USINA', mine: 'MINA', fab: 'FÁBRICA' }[b.k] || '', x + 8, y - 6, 10 * u, col); } }
+  cueMarks(X, Y, me, u, true);   // the points and who holds them, the radios (own, and the enemy's made out), the commander's and the general's marks
+  const keep = SPOT.keep, at = (g, foe) => { const gx = foe ? sX(g, me) : g.x, gz = foe ? sZ(g, me) : g.z; return [X(gx === undefined ? g.x : gx), Y(gz === undefined ? g.z : gz)]; };
+  for (const g of S.men) {
+    if (g.dead || g === P || g.civ || g.in) continue;
+    const foe = g.team !== me; if (foe && !spotted(g, me)) continue;
+    const [x, y] = at(g, foe); if (!on(x, y)) continue;
+    hx.globalAlpha = foe ? clamp(1.15 - (S.t - sT(g, me)) / keep, .2, 1) : 1; mark(x, y, g.pid ? 3.2 : 2.2, foe ? foeCol(g.team) : FRIEND, foe); hx.globalAlpha = 1;
+    if (g.pid) txt(g.name, x, y - 14, 10 * u, foe ? foeCol(g.team) : FRIEND, 'center');
+  }
+  const lad = sideLadder(me);
+  for (const g of S.units) {
+    if (g.dead || g === P) continue;
+    const foe = g.team !== me; if (foe && !spotted(g, me)) continue;
+    const [x, y] = at(g, foe); if (!on(x, y)) continue;
+    const age = foe ? S.t - sT(g, me) : 0, col = isAA(P, g) ? AAC : foe ? foeCol(g.team) : FRIEND;
+    hx.globalAlpha = foe ? clamp(1.15 - age / keep, .2, 1) : 1; mark(x, y, g.kind === 'truck' ? 3.5 : isAA(P, g) ? 6.5 : 5, col, foe);
+    if (foe) { const rg = lad.get(g) || (!P.dead && sees(P, g) ? 3 : 1), cl = belCls(g); txt(rg < 2 ? '?' : CLSG[cl] || '?', x, y + 8, 9 * u, col, 'center'); if (age > 4) txt(Math.round(age) + ' s', x, y - 10 - 9 * u, 9 * u, col, 'center'); }
+    if (g.pid) txt(g.name, x, y - 18, 11 * u, foe ? foeCol(g.team) : FRIEND, 'center');
+    hx.globalAlpha = 1;
+  }
+  for (const q of S.planes) {
+    if (q.dead || q === P) continue;
+    const foe = q.team !== me; if (foe && !spotted(q, me)) continue;
+    const x = X(q.x), y = Y(q.z); if (!on(x, y)) continue;
+    hx.globalAlpha = foe ? clamp(1.15 - (S.t - sT(q, me)) / keep, .2, 1) : 1;
+    tri(x, y, Math.atan2(q.f.z, q.f.x), 7, 'rgba(8,12,13,.85)'); tri(x, y, Math.atan2(q.f.z, q.f.x), 5, foe ? foeCol(q.team) : FRIEND); hx.globalAlpha = 1;
+    if (q.pid) txt(q.name, x, y - 16, 10 * u, foe ? foeCol(q.team) : FRIEND, 'center');
+  }
+  { const px = X(P.x), py = Y(P.z), f = P.f || { x: 1, z: 0 }, a = Math.atan2(f.z, f.x);   // the player: where he is and where he faces
+    hx.strokeStyle = 'rgba(255,255,255,.9)'; hx.lineWidth = 1.5; hx.beginPath(); hx.arc(px, py, 13, 0, TAU); hx.stroke();
+    tri(px, py, a, 11, 'rgba(8,12,13,.9)'); tri(px, py, a, 8.5, P.dead ? '#9aa39f' : '#ffffff');
+    txt(P.dead ? 'VOCÊ (FORA)' : 'VOCÊ', px, py + 16, 11 * u, '#ffffff', 'center');
+  }
+  const W = Math.min(cw - 28, 440 * u); let y = 12 * u;   // the title, the keys, what the marks mean
+  hx.fillStyle = 'rgba(8,12,13,.72)'; hx.fillRect(14, 8, W, 74 * u);
+  txt('MAPA DA BATALHA', 22, y, 15 * u, acc, 'left', disp); txt('×' + (Math.round(BM.z * 10) / 10).toString().replace('.', ','), 14 + W - 8, y, 12 * u, ink, 'right'); y += 21 * u;
+  txt('M ou Esc: fechar · roda ou + −: zoom · arrastar: mover · duplo clique: você', 22, y, 11 * u, ink); y += 15 * u;
+  txt('▪ seu lado   ◆ inimigo que o seu lado viu (apaga com o tempo)', 22, y, 11 * u, ink); y += 15 * u;
+  txt('○ ponto (cor do dono)   ■ rádio   △ aeronave   O jogo não pausa', 22, y, 11 * u, ink);
+  txt('N', cw - 26, 14, 14 * u, ink, 'center', disp); tri(cw - 26, 14 + 22 * u, -Math.PI / 2, 7, ink);
+  const sb = gs * s; hx.strokeStyle = ink; hx.lineWidth = 2; hx.beginPath(); hx.moveTo(20, ch - 20); hx.lineTo(20 + sb, ch - 20); hx.moveTo(20, ch - 25); hx.lineTo(20, ch - 15); hx.moveTo(20 + sb, ch - 25); hx.lineTo(20 + sb, ch - 15); hx.stroke();
+  txt(gs >= 1000 ? gs / 1000 + ' km' : gs + ' m', 20 + sb / 2, ch - 40, 11 * u, ink, 'center');
+}
+drawHud = (g => () => { g(); try { bmDraw(); } catch (e) { BM.on = false; console.error(e); } })(drawHud);
+/* M in the general's view: the map, whatever the view is */
+genKey = (g => e => {
+  const typing = /INPUT|TEXTAREA|SELECT/.test((e.target && e.target.tagName) || '');
+  if (S && !typing && e.code === 'KeyM' && !e.shiftKey && !e.ctrlKey && !e.altKey && !e.metaKey) {
+    if (GV.on) { e.preventDefault(); if (!e.repeat) { if (GV.rts) { GV.mR = true; rtsSet(false); } else if (GV.mR) { GV.mR = false; rtsSet(true); } else genOpen(false, true); } return true; }
+    if (playMode === 'watch') { e.preventDefault(); if (!e.repeat) { GV.mR = false; genOpen(true, true); } return true; }
+  }
+  if (bmLive() && !typing && !e.ctrlKey && !e.altKey && !e.metaKey) {
+    if (e.code === 'Escape') { e.preventDefault(); bmSet(false); return true; }
+    if (e.code === 'Equal' || e.code === 'NumpadAdd') { e.preventDefault(); bmZoom(1.25); return true; }
+    if (e.code === 'Minus' || e.code === 'NumpadSubtract') { e.preventDefault(); bmZoom(1 / 1.25); return true; }
+  }
+  return g(e);
+})(genKey);
+genOpen = (g => (v, user) => { if (v) { bmSet(false); if (!GV.on) GV.mR = false; } g(v, user); })(genOpen);
+cv.addEventListener('pointerdown', e => { if (!bmLive() || e.button !== 0) return; e.preventDefault(); const p = bmXY(e); BM.drag = { x: p.x, y: p.y }; try { cv.setPointerCapture(e.pointerId); } catch (er) {} });
+cv.addEventListener('pointermove', e => { const d = BM.drag; if (!d || !bmLive()) return; const p = bmXY(e), s = bmS(); BM.cx -= (p.x - d.x) / s; BM.cz -= (p.y - d.y) / s; d.x = p.x; d.y = p.y; bmClamp(); });
+addEventListener('pointerup', () => { BM.drag = null; });
+cv.addEventListener('wheel', e => { if (!bmLive() || !e.deltaY) return; e.preventDefault(); const p = bmXY(e); bmZoom(e.deltaY < 0 ? 1.25 : 1 / 1.25, p.x, p.y); }, { passive: false });
+cv.addEventListener('dblclick', e => { if (!bmLive()) return; e.preventDefault(); const P = S.my; BM.z = Math.max(BM.z, 4); BM.cx = P.x; BM.cz = P.z; bmClamp(); });
+/* ===== end of the battle map ===== */
 if (window.claude && window.claude.hot && window.claude.hot.ready) window.claude.hot.ready(boot); else boot();
 </script>
 

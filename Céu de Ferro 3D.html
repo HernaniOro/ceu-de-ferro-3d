@@ -32162,8 +32162,11 @@ function nadeFold(x, y, z, r, m) {
    corridors (cf-trincheiras-tuneis) are to come through the same fortSlots and trenchAt. opt { away, min }: only places min m or more
    from away (null when there is none); hard: against armour, only a place a wall, a house or the ground hides from e (cvFold), never a bush or a
    wood, here and stop m short of it on his way (where he halts), and soon (hfar times the weight of the way, a building's bay hbay of its worth: its door is a way round); the shadow of each
-   standing house from e (lee m past its corner) is a place too. Returns { x, z, b (a bay), sc, why } */
-const CVR = { cut: 2, prot: 1.4, back: .3, bay: 1.8, wall: 1.5, bld: 6, lee: 3, stop: 1.4, hbay: .5, hfar: 2, hbody: 1.3, veh: 1.6, tr: 2.2, bag: 1.3, rock: .6, far: .9, gap: 2.5, eye: 1.8, body: 1 };
+   standing house from e (lee m past it, at the angles leeA) is a place too; against armour the way to a place is detour times longer when
+   a wall stands across it (cvWay: a corner hugged is slow). Returns { x, z, b (a bay), sc, why } */
+const CVR = { cut: 2, prot: 1.4, back: .3, bay: 1.8, wall: 1.5, bld: 12, lee: [3, 4.5], leeA: [0, .45, -.45, .9, -.9], detour: 1.8, hgap: 0, stopA: [0, .8, -.8], stop: 1.4, hbay: .5, hfar: 2, hbody: 1.3, veh: 1.6, tr: 2.2, bag: 1.3, rock: .6, far: .9, gap: 2.5, eye: 1.8, body: 1 };
+/* the way from m to x z: straight, or detour times as long when a wall stands across it (at the knee) */
+function cvWay(m, x, z) { const d = Math.hypot(x - m.x, z - m.z), y = m.y + .6; return d > 2 && walled(m.x, y, m.z, x, hgt(x, z) + .6, z) ? d * CVR.detour : d; }
 /* the ground between e (at height ey) and x y z cuts the line */
 function cvFold(e, ey, x, y, z) { for (let i = 1; i < 8; i++) { const k = i / 8; if (ey + (y - ey) * k < hgt(e.x + (x - e.x) * k, e.z + (z - e.z) * k) + .3) return true; } return false; }
 function cvPick(m, e, r, used, opt) {
@@ -32172,13 +32175,17 @@ function cvPick(m, e, r, used, opt) {
     if (hgt(x, z) < S.T.WL + .5) return;
     const dm = Math.hypot(x - m.x, z - m.z); if (dm > r * 1.3) return;
     if (opt && opt.away && Math.hypot(x - opt.away.x, z - opt.away.z) < opt.min) return;   // away from it (a grenade, the enemy): tps fuga, recuo
-    if (used) for (const u of used) if (Math.abs(u.x - x) < C.gap && Math.abs(u.z - z) < C.gap) return;
+    const gap = opt && opt.hard ? C.hgap : C.gap; if (used) for (const u of used) if (Math.abs(u.x - x) < gap && Math.abs(u.z - z) < gap) return;   // against armour out of its sight first, apart after
     coverAt(x, z, CV);
     const hard = !!(opt && opt.hard), y = hgt(x, z) + (hard ? C.hbody : C.body), cut = !!e && (hard ? walled(e.x, ey, e.z, x, y, z) || cvFold(e, ey, x, y, z) : !los(e, ey, { x, z }, y));
     if (hard && !cut) return;   // against armour only what stops it counts: a wall, a house, the ground; never a bush or a wood
-    if (hard && dm > 1.6) { const sx = x - (x - m.x) / dm * C.stop, sz = z - (z - m.z) / dm * C.stop, sy = hgt(sx, sz) + C.hbody; if (!(walled(e.x, ey, e.z, sx, sy, sz) || cvFold(e, ey, sx, sy, sz))) return; }   // and where he stops short of it, coming from where he is
+    if (hard && b && !opt.inside) return;   // a building's bay only on the way out: its door is a way round, slow when the gun is on him
+    if (hard && dm > 1.6) for (const a of C.stopA) {   // and where he halts short of it, coming from where he is (or a little to a side, round a wall)
+      const ux = (m.x - x) / dm, uz = (m.z - z) / dm, c = Math.cos(a), s = Math.sin(a), sx = x + (ux * c - uz * s) * C.stop, sz = z + (ux * s + uz * c) * C.stop, sy = hgt(sx, sz) + C.hbody;
+      if (!(walled(e.x, ey, e.z, sx, sy, sz) || cvFold(e, ey, sx, sy, sz))) return;
+    }
     const side = !e || CV.all || (e.x - x) * CV.x + (e.z - z) * CV.z > 0;
-    const sc = (cut ? C.cut : 0) + (hard ? 0 : (CV.p || (CV.b ? COVER.bush[2] : 0)) * (side ? C.prot : C.back)) + (hard && b ? k * C.hbay : k) - dm / r * C.far * (hard ? C.hfar : 1);   // against armour, out of its sight soon: the shadow before the way in
+    const dw = hard ? cvWay(m, x, z) : dm, sc = (cut ? C.cut : 0) + (hard ? 0 : (CV.p || (CV.b ? COVER.bush[2] : 0)) * (side ? C.prot : C.back)) + (hard && b ? k * C.hbay : k) - dw / r * C.far * (hard ? C.hfar : 1);   // against armour the way, round a wall in it   // against armour, out of its sight soon: the shadow before the way in
     if (!best || sc > best.sc) best = { x, z, b: b || undefined, sc, why: cut && !k ? 'dobra' : why };
   };
   const ux = e ? m.x - e.x : 0, uz = e ? m.z - e.z : 0, ul = Math.hypot(ux, uz) || 1, lee = (o, R) => (e ? { x: o.x + (o.x - e.x) / (Math.hypot(o.x - e.x, o.z - e.z) || 1) * R, z: o.z + (o.z - e.z) / (Math.hypot(o.x - e.x, o.z - e.z) || 1) * R } : { x: o.x + ux / ul * R, z: o.z + uz / ul * R });
@@ -32188,7 +32195,9 @@ function cvPick(m, e, r, used, opt) {
   for (const o of near(m.x, m.z, r)) {
     if (drBldOk(o)) {
       for (const p of bldBays(o, m.x, m.z).slice(0, 2)) tryAt(p.x, p.z, C.bay, 'predio', p);
-      if (e) { const L = Math.hypot(o.hw || 4, o.hd || 4) + C.lee, ex = o.x - e.x, ez = o.z - e.z, el = Math.hypot(ex, ez) || 1; for (const a of [0, .45, -.45]) { const c = Math.cos(a), s = Math.sin(a); tryAt(o.x + (ex * c - ez * s) / el * L, o.z + (ex * s + ez * c) / el * L, C.wall, 'sombra'); } }   // in the house's shadow from e
+      if (e) {
+        const ex = o.x - e.x, ez = o.z - e.z, el = Math.hypot(ex, ez) || 1; for (const l of C.lee) { const L = Math.hypot(o.hw || 4, o.hd || 4) + l; for (const a of C.leeA) { const c = Math.cos(a), s = Math.sin(a); tryAt(o.x + (ex * c - ez * s) / el * L, o.z + (ex * s + ez * c) / el * L, C.wall, 'sombra'); } }   // in the house's shadow from e, at two depths (room for a squad)
+      }
       continue;
     }
     if (S.os[o.id] < 2 && (o.K.rock || (o.K.sight && o.rd))) { const p = lee(o, (o.rd || 1) + 1.1); tryAt(p.x, p.z, C.rock, 'rocha'); }
@@ -33834,7 +33843,7 @@ if (typeof rtsBrain === 'function') rtsBrain = (g => q => {
    (CEREBRO: soldado) reads only that queue and what he is told */
 const STIM = { n: 8, every: .1, hear: 30, armor: 700, again: 25, nade: { see: 15, hear: 10, cone: .3, every: .25 }, mate: 20, veh: { r: 14, v: 3, every: .25 }, fpv: 25, fresh: 2 };
 function brStim(m, k, d) {
-  if (!m || m.dead || !m.ai || m.net || m.in || !BRAIN.on) return;
+  if (!m || m.dead || !m.ai || m.net || m.in || !BRAIN.on || !SOLB.on) return;
   const l = m.est || (m.est = []); l.push(Object.assign({ k, t: S.t }, d)); if (l.length > STIM.n) l.shift();
 }
 drInc = (f => (m, by, vx, vz, w) => { if (by && by.team !== m.team && (!S.net || S.host)) brStim(m, 'tiro', { w, by, ux: -(vx || 0), uz: -(vz || 0) }); return f(m, by, vx, vz, w); })(drInc);
@@ -33930,11 +33939,11 @@ function percKnew(m, know) {
    His task (the bias): m.tar, else his team's role (P3, q.eq), else the drill, else the order. Each reaction is a decision (flCb, P5's,
    the cb event of P6) and then a line (fala, P5's); P5's grenade reflex (seen landing, or called) is a stimulus of his own decision.
    The contract's objects are P0's (m.rf { k, ate }, at rest { k: null, ate: 0 }; m.mo with what P1 keeps on it) */
-const SOLB = { run: 2, better: .3, u: { stale: 1.2, need: 1, hyst: .1, obe: .45, base: .35, ask: .12 }, s: { dt: .1, tiro: .14, hit: .4, expl: .6, hl: 4, pin: .3, nail: .7 },
+const SOLB = { on: 1, run: .8, better: .3, u: { stale: 1.2, need: 1, hyst: .1, obe: .45, base: .35, ask: .12 }, s: { dt: .1, tiro: .14, hit: .4, expl: .6, hl: 4, pin: .3, nail: .7 },
   m: { fall: .12, mine: .2, lead: .15, hit: .08, alone: [30, .02], two: .03, armor: [300, .02], dry: .02, up: [.2, .015, .01, .005], firm: .6, shaken: .4, panic: .2 },
   nade: { r: 8, grab: 1.2, reach: 3.5, spare: 1.6, back: .55, safe: 8.5, flee: 14 }, rf: { cover: 10, crawl: 10, side: 3, call: 10 },
   sur: { r: 70, lead: 30, cov: .5, take: 5, hold: 2, walk: 25, ask: 8, know: 400, err: 35, free: 100, back: 40 },
-  body: { r: 25, take: 1.5, at: 2 }, arm: { r: 30, out: 40, close: 40, near: 120, hold: 15, near2: 3 }, tps: { cap: 3, arm: 6, r: { abrigo: 15, recuo: 40, fuga: 14, blindado: 30 } } };
+  body: { r: 25, take: 1.5, at: 2 }, arm: { r: 30, out: 40, close: 40, near: 120, hold: 15, near2: 3, reach: 14, at: .5, stay: 3 }, tps: { cap: 3, arm: 6, r: { abrigo: 15, recuo: 40, fuga: 14, blindado: 30 } } };
 /* two lines of the soldier's own in P5's table (FALAS): the grenade thrown back, and the cover he runs for */
 Object.assign(FALAS, { devolvendo: { c: 'nade', p: 3, cat: 'reflexo', v: [() => 'Devolvendo!', () => 'Toma de volta!', () => 'É de vocês!'] },
   abrigo: { c: 'cover', p: 1, cat: 'relato', v: [() => 'Abrigo!', () => 'Me abrigando!', () => 'Indo pro abrigo!'] } });
@@ -33968,12 +33977,12 @@ function brTps(m, perfil, f = {}) {
   if (typeof tpsOn === 'function' && tpsOn()) {
     const o = { r, th, zonas: away && min ? [{ x: away.x, z: away.z, r: min }] : undefined };
     if (perfil === 'blindado') {   // the nearest place that truly hides him from the gun (where he halts short of it too): P2's best ones and the hard pick of part 1
-      const l = tps(m, 'contra_blindado', o, SOLB.tps.arm) || [], ea = Object.assign({ arm: 1 }, e), c = cvPick(m, e, r, f.used, { away, min, hard: 1 });
-      p = null; for (const q of l) if ((f.inside || !(q.pt && q.pt.in)) && ((q.pt && q.pt.in) || (brCovAt(q.x, q.z, ea) && brShort(m, q, ea))) && (!p || hdist(q, m) < hdist(p, m))) p = q;   // inside a house only on the way out (its door is a way round)
-      if (c && (!p || hdist(c, m) < hdist(p, m) + SOLB.arm.near2)) p = c;   // the hard pick unless P2's is clearly nearer
+      const l = tps(m, 'contra_blindado', o, SOLB.tps.arm) || [], ea = Object.assign({ arm: 1 }, e), c = cvPick(m, e, r, f.used, { away, min, hard: 1, inside: f.inside });
+      p = null; for (const q of l) if ((f.inside || !(q.pt && q.pt.in)) && ((q.pt && q.pt.in) || (brCovAt(q.x, q.z, ea) && brShort(m, q, ea))) && (!p || cvWay(m, q.x, q.z) < cvWay(m, p.x, p.z))) p = q;   // inside a house only on the way out (its door is a way round); the shortest way
+      if (c && (!p || cvWay(m, c.x, c.z) < cvWay(m, p.x, p.z) + SOLB.arm.near2)) p = c;   // the hard pick unless P2's way is clearly shorter
       else if (p) { p = Object.assign({}, p, { b: p.pt && p.pt.in && p.pt.b ? p.pt.b : undefined }); tpsHold(m, p, SOLB.arm.hold * 2); }
     } else { p = tps(m, 'abrigo', o, 1); if (p) p = Object.assign({}, p, { b: p.pt && p.pt.in && p.pt.b ? p.pt.b : undefined }); }
-  } else p = cvPick(m, e, r, f.used, perfil === 'abrigo' ? undefined : { away, min, hard: perfil === 'blindado' ? 1 : 0 });
+  } else p = cvPick(m, e, r, f.used, perfil === 'abrigo' ? undefined : { away, min, hard: perfil === 'blindado' ? 1 : 0, inside: f.inside });
   if (!p) return null;
   p.sc = p.b ? 1 : brCovAt(p.x, p.z, e && Object.assign({ arm: perfil === 'blindado' || e.arm }, e));
   return [p];
@@ -33989,7 +33998,7 @@ function brCovAt(x, z, e) {
 }
 const brHere = (m, e) => (m.cbin || m.fc ? 1 : brCovAt(m.x, m.z, e));
 /* where he halts short of q coming from where he is (CVR.stop m before it) is covered too */
-const brShort = (m, q, e) => { const d = hdist(m, q); if (d < 1.6) return true; const x = q.x - (q.x - m.x) / d * CVR.stop, z = q.z - (q.z - m.z) / d * CVR.stop; return brCovAt(x, z, e) > 0; };
+const brShort = (m, q, e) => { const d = hdist(m, q); if (d < 1.6) return true; for (const a of CVR.stopA) { const ux = (m.x - q.x) / d, uz = (m.z - q.z) / d, c = Math.cos(a), s = Math.sin(a); if (!(brCovAt(q.x + (ux * c - uz * s) * CVR.stop, q.z + (ux * s + uz * c) * CVR.stop, e) > 0)) return false; } return true; };
 /* he goes to p (running or not, in stance st) whatever else has him somewhere, for dur s; a bay is a building's way in. His own break
    (A.brk with no A.drb): the squad's drill waits while he saves himself or does what his utility chose over it. Called after his own
    thinking, it also sets this beat's controls (sqMan has a man on a break walk crouched within 6 m: running for his life he runs on to
@@ -34003,7 +34012,9 @@ const brWay = (m, p) => (typeof tpsBldPass === 'function' && tpsOn() ? tpsBldPas
 /* he has an anti-tank weapon with rounds (he hunts the armour: the drill anticarro and his own stalk) */
 const brAT = m => { const s = m.arms[1]; return !!s && (s.d.k === 'heat' || s.d.k === 'atgm') && s.mag + s.res > 0; };
 /* a wall, a house or the ground stands between t and him */
-const brHard = (m, t) => { const ey = eyeY(t), y = m.y + STANCE[m.st].h * MAN.sc * .6; return walled(t.x, ey, t.z, m.x, y, m.z) || cvFold({ x: t.x, z: t.z }, ey, m.x, y, m.z); };
+const brHard = (m, t, st) => { const ey = eyeY(t), y = m.y + STANCE[st === undefined ? m.st : st].h * MAN.sc * .6 + (st === 2 ? .15 : 0); return walled(t.x, ey, t.z, m.x, y, m.z) || cvFold({ x: t.x, z: t.z }, ey, m.x, y, m.z); };   // st: as if in that stance (lying: his back too)
+/* the last steps to p, which the old walk stops 1.5 m short of (the place hides him, not the metre and a half before it) */
+function brArrive(m, p, c) { const dx = p.x - m.x, dz = p.z - m.z, d = Math.hypot(dx, dz); if (d > .35 && d < 1.6) { c.mx = dx / d * .8; c.mz = dz / d * .8; } }
 const REFL = [
   { k: 'granada', pri: 5, rt: [.2, .5], when: (m, e) => e.k === 'granada' && e.b && !e.b.gone && hdist(e.b, m) < SOLB.nade.r ? e : null,
     act(m, e) {
@@ -34042,7 +34053,8 @@ const REFL = [
       const t = e.o, th = { x: e.x, z: e.z, y: eyeY(t), arm: 1 }, d0 = hdist(th, m), hid = brHard(m, t), h = sayClock(m, t.x, t.z);
       if (hid) { brEv('blindado', m, { a: 'oculto' }); fala(m, 'blindado', { h, A: flAs(h) }); return { st: 'hide', o: t, d0, p: { x: m.x, z: m.z, b: m.cbin ? m.cbo : undefined }, T: S.t + SOLB.arm.hold }; }
       const used = []; for (const o of m.sq ? m.sq.men : []) if (o !== m && o.rf && o.rf.p) used.push(o.rf.p);
-      const c = brTps(m, 'blindado', { e: th, r: SOLB.arm.r, used }), p = c && c[0];
+      const c = brTps(m, 'blindado', { e: th, r: SOLB.arm.r, used }), p0 = c && c[0], flat = brHard(m, t, 2), p = p0 && !(flat && hdist(p0, m) > SOLB.arm.reach) ? p0 : null;
+      if (!p && flat) { brEv('blindado', m, { a: 'deita' }); fala(m, 'blindado', { h, A: flAs(h) }); return { st: 'flat', o: t, d0, p: { x: m.x, z: m.z }, T: S.t + SOLB.arm.hold }; }   // a fold hides him lying where he is and no wall is near enough: flat, out of its sight
       brEv('blindado', m, { a: p ? p.why || p.k : 'nada' }); fala(m, 'blindado', { h, A: flAs(h) });
       return p ? { st: 'go', o: t, d0, p, W: [p], i: 0, T: S.t + SOLB.arm.hold } : null;   // straight there, out of its sight soonest (round a wall in the way); nothing hides him: the drill and the utility (flat, smoke)
     },
@@ -34050,9 +34062,13 @@ const REFL = [
       const t = d.o; if (t.dead) return false;
       if (d.st === 'go') {
         while (d.i < d.W.length - 1 && hdist(m, d.W[d.i]) < 1.6) d.i++;   // out the far side: through the house when it is in the way (P2's tpsBldPass)
-        const w = d.W[d.i]; if (d.i < d.W.length - 1 || hdist(m, w) > 1.2) { brGo(m, w, true, 0, .5); return S.t < d.T; } d.st = 'hide';
+        const w = d.W[d.i];
+        if (d.i === d.W.length - 1 && hdist(m, w) < SOLB.arm.stay && brHard(m, t, 1)) { d.p = { x: m.x, z: m.z, why: d.p.why || d.p.k }; d.st = 'hide'; }   // out of its sight already, near the place: he stays there
+        else if (d.i < d.W.length - 1 || hdist(m, w) > SOLB.arm.at) { brGo(m, w, true, 0, .5); brArrive(m, w, c); return S.t < d.T; }
+        d.st = 'hide';
       }
-      brGo(m, d.p, false, 1, .5);
+      if (d.st === 'flat') { brGo(m, d.p, false, 2, .5); m.st = c.st = 2; c.mx = c.mz = 0; return S.t < d.T; }
+      brGo(m, d.p, false, 1, .5); brArrive(m, d.p, c);
       const e = m.pm && m.pm.get(t), tx = e && e.kn ? t.x : d.p.x + 1e3, tz = e && e.kn ? t.z : d.p.z, td = Math.hypot(tx - m.x, tz - m.z);
       if (!d.out && (td < d.d0 - SOLB.arm.close || td < SOLB.arm.near)) {   // it keeps coming: out the other side, unseen
         d.out = 1; const th = { x: tx, z: tz, y: eyeY(t), arm: 1 }, q = brTps(m, 'blindado', { e: th, away: th, min: td + 15, r: SOLB.arm.out, inside: 1 });
@@ -34196,7 +34212,7 @@ function brUtil(m, c) {
 /* each beat of a soldier's mind, after everything else he does: his morale, his reflex, his utility, and what they ask of his controls */
 aiMan = (g => (m, dt) => {
   g(m, dt);
-  if (!BRAIN.on || !m.ai || m.net || m.in || m.dead) return;
+  if (!BRAIN.on || !SOLB.on || !m.ai || m.net || m.in || m.dead) return;
   const c = m.ctl, A = m.ai;
   if (m.sur) return;
   brMorale(m, dt);
@@ -34218,14 +34234,14 @@ aiMan = (g => (m, dt) => {
   if (Q && Q.go) Q.go(m, u, c);
 })(aiMan);
 /* who may choose for himself: a soldier of the AI up, not a captive, not fetching a mate, not the mortar's or the sniper's own (their own minds) */
-const brFree = m => !!BRAIN.on && !!m.ai && !m.net && !m.in && !m.dead && !m.down && !m.sur && !m.ai.rsc && !m.def.snp && !(m.def.mort && m.sq && m.sq.state !== 1);
+const brFree = m => !!BRAIN.on && !!SOLB.on && !!m.ai && !m.net && !m.in && !m.dead && !m.down && !m.sur && !m.ai.rsc && !m.def.snp && !(m.def.mort && m.sq && m.sq.state !== 1);
 /* his utility at the soldier's cadence of P0 (BRAIN.hz.sold by his level of detail: in contact, 5 a second near the player, 2 far; none out of it),
    when no reflex has him */
 brainHook('sold', (m, q) => { if (brFree(m) && !(m.rf && m.rf.k && S.t <= (m.rf.ate || 0)) && !m.rfP) brUtil(m, m.ctl); });
 /* one who is down: he crawls to cover once and calls for the medic until someone comes; one who surrendered is a captive */
 downAI = (f => m => {
   f(m);
-  if (!BRAIN.on || m.dead || !m.ai || m.net) return;
+  if (!BRAIN.on || !SOLB.on || m.dead || !m.ai || m.net) return;
   if (m.sur) return brCaptive(m);
   if (!m.down || m.tr || m.stab) return;
   const A = m.ai, c = m.ctl, r = m.resc && hdist(m.resc, m) < 4;

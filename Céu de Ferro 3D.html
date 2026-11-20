@@ -9145,7 +9145,6 @@ function wayTo(M, x, z, gx, gz, r, heavy) {
   if (heavy) return WAY;
   for (const o of near(x + ux * L / 2, z + uz * L / 2, L / 2 + r)) {
     if (S.os[o.id] > 1 || (o.K.sight && !o.K.rock) || o.K.veil) continue;   // a rock is gone round as a tree is; a bush is walked through
-    if (o.ft && o.ft.k === 1 && (M.trIn || (M.trw && M.trw.pts))) continue;   // in a trench, or on a corridor's way (TRN): it is walked along
     const px = o.x - x, pz = o.z - z, t = px * ux + pz * uz, l = pz * ux - px * uz, R = (o.rd || o.r) + r;
     if (t <= 0 || Math.abs(l) >= R || Math.hypot(gx - o.x, gz - o.z) < R) continue;
     const e = t - Math.sqrt(R * R - l * l);
@@ -10138,7 +10137,7 @@ function aiMan(m, dt) {
   const t = sight(A, m, A.tgt), pin = m.sup > S.t && !A.mv && !(A.brk > S.t), rout = !!m.sq && m.sq.state === 1, dx = A.gx - m.x, dz = A.gz - m.z, d = Math.hypot(dx, dz), w = (m.arms[c.w] || m.arms[0]).d;
   if (!t) A.tgt = null;
   if (d > 1.5 && (rout || !pin)) {
-    const G = trGo(m, A), W = wayTo(A, m.x, m.z, G ? G.x : A.gx, G ? G.z : A.gz, 1, false), wx = W.x - m.x, wz = W.z - m.z, wd = Math.hypot(wx, wz) || 1;   // G: the way by a trench corridor (TRN)
+    const W = wayTo(A, m.x, m.z, A.gx, A.gz, 1, false), wx = W.x - m.x, wz = W.z - m.z, wd = Math.hypot(wx, wz) || 1;
     c.mx = wx / wd; c.mz = wz / wd;
     if (jammed(A, m, true)) { const k = c.mx; c.mx = -c.mz * A.fs; c.mz = k * A.fs; }   // held up: along the wall for a moment
   } else { c.mx = c.mz = 0; A.jam = null; }
@@ -30961,7 +30960,14 @@ anaReport = (g => (ev, me) => {
   return R;
 })(anaReport);
 /* ===== end of the guerrilla mind ===== */
-/* ---------- trench corridors, tunnels and the soldier's shelters (TRN, TUN, COVR; cf-trincheiras-tuneis, NOT TESTED: docs/nao-testado/cf-trincheiras-tuneis.md) ----------
+/* ---------- CEREBRO: trincheiras-tuneis (TRN, TUN, ABRT; cf-trincheiras-tuneis, NOT TESTED: docs/nao-testado/cf-trincheiras-tuneis.md) ----------
+   A producer for the soldier's mind (the research cf-cerebro-pesquisa, 3.3 "cf-trincheiras-tuneis"): it publishes the shelter points of the
+   works into P2's registry (ABRT), the corridors and the tunnels as route edges (trRota: exposure about 0; a tunnel's edge out of sight and
+   out of hearing), the hooks of the procedures "take the foot of a trench" and "clear a trench" (trPe, trLimpar) and, until a leader (P3)
+   walks its men by them, a default way along the corridors for any AI soldier. Where to dig is not decided here (P3, with P2's profile
+   cavar). Old code only through hooks (the list is in the PR and in the doc): aiMan and wayTo (the corridor's way), fortStart (a trench laid
+   on from the end of one of the side's own), fortAt and fortDrop (the registry), squadThink (a squad underground), explode (a mouth blown
+   in), step (the tunnels), genState, grlTun, GC.fort, Net.rx and Net.tick.
    TRN: trenches that touch are one corridor. trNet() joins every trench dug past FORT.trench.min whose end lies within join m of another's
    middle line (end to end, a corner, a T), or whose lines cross; a node at each end and at each joint, edges along each trench and across
    each joint. It is built again only when a work comes, goes or is dug past min (its key). An AI soldier (aiMan, trGo) whose goal is in a
@@ -30982,13 +30988,15 @@ anaReport = (g => (ev, me) => {
    orders it all through the one funnel (genCmd tun: dig {x z, x2? z2?, ids?}, use {id? | x z, ids? | n?, x2? z2?}, blow {x z, ids?}, fill
    {id}); fortify with k tun is dig. The Insurgents' guerrilla tactic tun digs one from each village it holds to its way out and sends
    worn squads through it. Online the host sends each side its own tunnels and the mouths it found (tun, the server's tcap).
-   COVR: what the soldier's mind (cf-cerebro-soldado) may ask, without any behaviour of its own: shelters(m, r, o) the shelters within r m of a
-   soldier or a point (trench places, sandbag walls, its side's tunnel mouths, bushes and brush) with concealment c and protection p, best
-   first; trCorr(x, z) the corridor a point is in; trPath(x0, z0, x1, z1, hot) the way through the corridors (null when the open is shorter);
-   tunMouths(t) the mouths side t may use or knows. No random number in any of it but the squads' places on coming out (addSquad) */
+   For the soldier's mind, without any behaviour of its own: ABRT (below) the shelter points in P2's format; trRota() the route edges;
+   trPe and trLimpar the clearing hooks; shelters(m, r, o) the shelters within r m (the registry's points, bushes and brush) with
+   concealment c and protection p; trCorr(x, z) the corridor a point is in; trPath(x0, z0, x1, z1, k) the way through the corridors (null
+   when the open is as cheap); tunMouths(t) the mouths side t may use or knows. No random number in any of it but the squads' places on
+   coming out (addSquad) */
 const TRN = { on: 1, join: 3.2, snap: 8, turn: .7, every: 2, calm: 1.35, hot: 2.4, hotR: 300, max: 400 };
 const TUN = { on: 1, max: { ins: 450, reg: 260 }, min: 40, cap: { ins: 6, reg: 2 }, rate: .12, dig: 14, crawl: 1.1, pad: 4, look: 1, see: 16, seeSap: 34, seeRec: 26,
-  peek: 220, blow: { sap: 6, man: 14, near: 3.5, guard: 25 }, blast: { r: 4, dmg: 120 }, reach: 5, wait: 600, net: 2, near: 300, auto: [90, 180, 300], foe: 150 };
+  peek: 220, blow: { sap: 6, man: 14, near: 3.5, guard: 25 }, blast: { r: 4, dmg: 120 }, reach: 5, wait: 600, net: 2, near: 300, auto: [90, 180, 300], foe: 150,
+  hear: { dig: 1, go: 0, keep: 3 }, close: 6 };
 /* ----- the corridors ----- */
 function trNet() {
   const L = S.forts.filter(f => f.k === 1 && !f.gone && f.prog >= f.F.min), key = S.fn + ':' + L.length;
@@ -31054,9 +31062,9 @@ function trPath(x0, z0, x1, z1, k) {
   pts.reverse();
   return pts.length > TRN.max ? null : pts;
 }
-/* aiMan: where an AI soldier heads instead of its goal when a corridor is the better way (A.trw, looked at every TRN.every s). A.trIn: it is in a trench (wayTo goes on through trenches then) */
+/* where an AI soldier heads instead of its goal when a corridor is the better way (A.trw, looked at every TRN.every s); wayTo goes round no
+   trench whose circle holds the point it heads for, so a corridor's points lead it along the cut */
 function trGo(m, A) {
-  A.trIn = !!(m.fc && m.fc.k === 1 && m.dg > .5);
   if (!TRN.on || !S.forts || !S.forts.length) { A.trw = null; return null; }
   let W = A.trw;
   if (!W || W.gx !== A.gx || W.gz !== A.gz || S.t >= W.T) {
@@ -31067,6 +31075,14 @@ function trGo(m, A) {
   while (W.i < W.pts.length - 1 && Math.hypot(W.pts[W.i].x - m.x, W.pts[W.i].z - m.z) < 1.3) W.i++;
   return W.pts[W.i];
 }
+/* the hooks: aiMan says whose way wayTo is asked (TRN.cur), and wayTo heads for the corridor's point instead of the soldier's own goal */
+TRN.cur = null;
+aiMan = (g => (m, dt) => { const o = TRN.cur; TRN.cur = m; try { return g(m, dt); } finally { TRN.cur = o; } })(aiMan);
+wayTo = (g => (M, x, z, gx, gz, r, heavy) => {
+  const m = TRN.cur;
+  if (m && !heavy && M === m.ai && gx === M.gx && gz === M.gz) { const G = trGo(m, M); if (G) { gx = G.x; gz = G.z; } }
+  return g(M, x, z, gx, gz, r, heavy);
+})(wayTo);
 /* a trench begun near the end of one of side t's own is laid on from that end: { x, z, a } or null */
 function trSnap(t, x, z, a) {
   if (!TRN.on || !S.forts) return null;
@@ -31135,10 +31151,10 @@ function tunAuto(t, x, z) {
 }
 function tunNew(t, ax, az, bx, bz) {
   const id = (S.tunN = (S.tunN || 0) + 1), tn = { id, team: t, a: { x: ax, z: az, y: hgt(ax, az) }, b: { x: bx, z: bz, y: hgt(bx, bz) }, len: Math.hypot(bx - ax, bz - az), prog: 0, st: 0, fd: bySide(() => 0), T: S.t, n: 0 };
-  tunL().push(tn); S.tunV = (S.tunV || 0) + 1; return tn;
+  tunL().push(tn); S.tunV = (S.tunV || 0) + 1; return tn;   // its mouths go into the registry once it is open (abrTun)
 }
 /* the squads of a side able to go through (no player, no vehicle, not routed, not aboard) */
-const tunOk = q => !!q && !q.net && q.live > 0 && !q.state && !q.lift && !q.rd && !q.tn && !q.men.some(m => m === S.my || m.net || m.in);
+const tunOk = q => !!q && q.job !== 'sap' && !q.net && q.live > 0 && !q.state && !q.lift && !q.rd && !q.tn && !q.men.some(m => m === S.my || m.net || m.in);
 /* a squad at its mouth goes under */
 function tunEnter(q, tn, w) {
   const men = q.men.filter(m => !m.dead && !m.gone && !m.down); if (!men.length || !tunLive(tn) || tn.prog < 1) return false;
@@ -31178,7 +31194,7 @@ squadThink = (g => q => (q.tn ? tunThink(q) : g(q)))(squadThink);
 /* a tunnel falls in */
 function tunFall(tn, by, why) {
   if (!tunLive(tn)) return;
-  tn.st = 1; S.tunV = (S.tunV || 0) + 1;
+  tn.st = 1; S.tunV = (S.tunV || 0) + 1; abrTun(tn);
   for (const q of S.squads) if (q.tn && q.tn.tn === tn) tunExit(q, q.tn.from, .5);
   for (const q of S.squads) if (q.tnGo && q.tnGo.tn === tn) q.tnGo = null;
   const p = tn.prog >= 1 ? tn.b : tn.a;
@@ -31189,33 +31205,44 @@ function tunFall(tn, by, why) {
 function tunFound(tn, e, w, how) {
   if (!isSide(e) || e === tn.team || !tunLive(tn) || tunSeen(tn, e, w)) return;
   if (w === 'b' && tn.prog < 1) return;
-  tn.fd[e] |= w === 'b' ? 2 : 1; S.tunV = (S.tunV || 0) + 1;
+  tn.fd[e] |= w === 'b' ? 2 : 1; S.tunV = (S.tunV || 0) + 1; abrTun(tn);
   const p = tunEnd(tn, w);
   gLog(e, 'eng', 'Boca de túnel inimiga encontrada ' + gNear(p.x, p.z) + (how ? ' (' + how + ')' : ''), p, 'tunf' + tn.id + w);
   if ((!S.net || S.host) && S.cmd && S.cmd[e] && genBy(e, 'def') === 'ai') { try { genCmd(e, { c: 'tun', k: 'blow', x: Math.round(p.x), z: Math.round(p.z), why: 'destruir a boca de túnel encontrada' }, 'ai'); } catch (er) { console.warn('túnel (blow):', er); } }
 }
-/* someone goes in or comes out at mouth w: who of the enemy has it in sight within TUN.peek m finds it */
+/* the enemy's perception of a mouth (HEAR, PERC): an enemy soldier sees it within see m (seeSap a sapper or an engineer, seeRec a scout or a
+   squad on recon), with the mouth in sight beyond close m; he hears it while it is dug (HEAR.mv.man running times hear.dig, cut by
+   HEAR.wall with no line between them, the dig heard for hear.keep s after the last stroke) and when a squad goes in or comes out
+   (HEAR.mv.man walking, the same cut); and anyone of the enemy within peek m who has the mouth in sight sees men go in or come out. A man in
+   the tunnel is out of the world: nobody sees or hears him (hear.go: what of his crawl carries, nothing) */
+function tunHeard(m, p, R) {
+  const d = hdist(m, p); if (d >= R) return false;
+  return d < R * HEAR.wall || los(m, eyeY(m), p, hgt(p.x, p.z) + .4);
+}
 function tunPeek(tn, w) {
-  const p = tunEnd(tn, w), y = hgt(p.x, p.z) + 1;
+  const p = tunEnd(tn, w), y = hgt(p.x, p.z) + 1, R = HEAR.mv.man[0];
   for (const e of foes(tn.team)) {
     if (tunSeen(tn, e, w)) continue;
-    const o = S.men.find(m => !m.dead && !m.in && m.team === e && Math.abs(m.x - p.x) < TUN.peek && Math.abs(m.z - p.z) < TUN.peek && hdist(m, p) < TUN.peek && los(m, eyeY(m), p, y))
+    const o = S.men.find(m => !m.dead && !m.in && m.team === e && Math.abs(m.x - p.x) < TUN.peek && Math.abs(m.z - p.z) < TUN.peek && (tunHeard(m, p, R) || (hdist(m, p) < TUN.peek && los(m, eyeY(m), p, y))))
       || S.units.find(u => !u.dead && u.team === e && hdist(u, p) < TUN.peek && los(u, eyeY(u), p, y));
-    if (o) tunFound(tn, e, w, 'viu soldados entrando ou saindo');
+    if (o) tunFound(tn, e, w, 'viu ou ouviu soldados entrando ou saindo');
   }
 }
 /* each look: the enemy near a mouth finds it */
 function tunSee() {
+  const Rd = HEAR.mv.man[1] * TUN.hear.dig, far = Math.max(TUN.seeSap, Rd);
   for (const tn of tunL()) {
     if (!tunLive(tn)) continue;
+    const dig = tn.prog < 1 && S.t - (tn.digT || -1e9) < TUN.hear.keep;
     for (const w of ['a', 'b']) {
       if (w === 'b' && tn.prog < 1) continue;
-      const p = tunEnd(tn, w);
+      const p = tunEnd(tn, w), py = hgt(p.x, p.z) + .3;
       for (const m of S.men) {
         if (m.dead || m.in || m.team === tn.team || !foeSide(tn.team, m.team) || tunSeen(tn, m.team, w)) continue;
-        const dx = Math.abs(m.x - p.x), dz = Math.abs(m.z - p.z); if (dx > TUN.seeSap || dz > TUN.seeSap) continue;
-        const q = m.sq, sap = !!(m.def && m.def.sap) || (q && q.job === 'eng'), rec = !!(q && (q.job === 'rec' || (q.ord && (q.ord.mk === 'recon' || q.ord.k === 'recon'))));
-        if (Math.hypot(dx, dz) < (sap ? TUN.seeSap : rec ? TUN.seeRec : TUN.see)) tunFound(tn, m.team, w, sap ? 'sapadores procurando' : rec ? 'reconhecimento' : 'soldados por perto');
+        if (Math.abs(m.x - p.x) > far || Math.abs(m.z - p.z) > far) continue;
+        const q = m.sq, sap = !!(m.def && m.def.sap) || (q && q.job === 'eng'), rec = !!(q && (q.job === 'rec' || (q.ord && (q.ord.mk === 'recon' || q.ord.k === 'recon')))), d = hdist(m, p);
+        if (d < (sap ? TUN.seeSap : rec ? TUN.seeRec : TUN.see) && (d < TUN.close || los(m, eyeY(m), p, py))) tunFound(tn, m.team, w, sap ? 'sapadores procurando' : rec ? 'reconhecimento' : 'soldados por perto');
+        else if (dig && w === 'a' && tunHeard(m, p, Rd)) tunFound(tn, m.team, w, 'ouviram cavar');
       }
     }
   }
@@ -31228,8 +31255,9 @@ function tunStep(dt) {
     if (!tunLive(tn) || tn.prog >= 1) continue;
     let n = 0; for (const m of S.men) if (!m.dead && !m.in && m.team === tn.team && Math.abs(m.x - tn.a.x) < TUN.dig && Math.abs(m.z - tn.a.z) < TUN.dig && hdist(m, tn.a) < TUN.dig && ++n >= 6) break;
     if (!n) continue;
-    const was = tn.prog; tn.prog = Math.min(1, tn.prog + n * TUN.rate / tn.len * dt);
+    const was = tn.prog; tn.prog = Math.min(1, tn.prog + n * TUN.rate / tn.len * dt); tn.digT = S.t;
     if (Math.floor(was * 10) !== Math.floor(tn.prog * 10)) S.tunV = (S.tunV || 0) + 1;
+    if (tn.prog >= 1) abrTun(tn);
     if (tn.prog >= 1) gLog(tn.team, 'eng', 'Túnel pronto: ' + Math.round(tn.len) + ' m ' + gNear(tn.a.x, tn.a.z) + ' até ' + gNear(tn.b.x, tn.b.z).replace(/^junto a /, ''), tn.b, null);
   }
   for (const q of S.squads) {
@@ -31272,7 +31300,7 @@ GC.tun = { d: 'def', f(t, c, by) {
     const B = Number.isFinite(c.x2) && Number.isFinite(c.z2) ? { x: c.x2, z: c.z2 } : tunAuto(t, c.x, c.z); if (!B) return gBad('tunb');
     const w = tunWhy(t, c.x, c.z, B.x, B.z); if (w) return gBad(w);
     let qs = gPick(t, c, c.x, c.z, 1, insT(t) ? null : { eng: 1 }).filter(tunOk);
-    if (!insT(t)) qs = qs.filter(q => q.job === 'eng' || q.men.some(m => !m.dead && m.def && m.def.sap));   // a regular side's tunnel is the engineers' or the sappers' work
+    if (!insT(t)) qs = qs.filter(q => q.job === 'eng' || (W21.jobs[q.job] && q.men.some(m => !m.dead && m.def && m.def.sap)));   // a regular side's tunnel is the engineers' or the sappers' work (not the sapper squads' own job: they keep to it and never walk to a work)
     if (!qs.length) return gBad('sq');
     const p = railOf(c.x, c.z), r = gSend(t, 'work', c.x, c.z, qs, 1, [], () => ({ x: c.x, z: c.z, O: { k: 'hold', ri: p.ri, s: p.s, x: c.x, z: c.z, R: 6, mk: 'build', fast: 1 } }));
     if (!r) return gBad('way');
@@ -31383,26 +31411,122 @@ Object.assign(Net, { tn: false, tnV: -1, tnAcc: 0,
     S.tun = L; S.tunV = (S.tunV || 0) + 1;
   };
 }
-/* ----- the shelters a soldier may take (COVR), for the soldier's mind ----- */
-const COVR = { max: 12, trench: { c: FORT.trench.conceal, p: .85 }, bags: { c: FORT.bags.conceal, p: .55 }, tun: { c: 1, p: 1 }, bush: { c: .6, p: .05 }, brush: { p: 0 }, cell: 25 };
-/* the shelters within r m of o (a soldier, or any { x, z, team }): [{ k: trench | bags | tun | bush | brush, x, z, c, p, d, f?, tn?, w?, o? }],
-   best first ((c + 2 p) over 1 + d / r). opt.free: only trench places nobody holds (default true); opt.max: how many (COVR.max) */
+/* ----- ABRT: the shelter points of the works, in P2's registry (report 3.2, P2) -----
+   P2's service (another package) is not on main yet: the points are published here in its format, by source, and P2 reads them (abrAll,
+   abrNear, or S.abr itself) and the dirty cells (S.abrD: cells of cell m whose points changed since P2 last took them, abrTake). A point:
+   { x, z, k: 'trincheira' | 'saco' | 'tunel', p: 16 sectors, each [standing, crouched, prone] protection 0..3 against direct fire coming
+   from that sector (sector i: the threat's bearing atan2(-dz, dx) from the point, i = round(bearing / (2 pi / 16)) mod 16), incl: null (no
+   corner to lean out of), cap: men it takes, dono: the side whose work it is, set: { a0, a1 } the sector of fire of a firing step (rad, the
+   game's headings), ind: protection 0..1 from indirect fire falling in (a trench none: a round inside bursts with everyone; a wall a little),
+   y: the floor, src: its source ('f' + work id, 't' + tunnel id), f / tn: the work or the tunnel, ve: the sides that know it (a tunnel mouth
+   only: its side and those that found it; P2 must not show it to the others) }.
+   A trench: every place along it (fortSlots) protects all round by how much of a man of each stance its cut hides (depth dug + parapet over
+   his height: 3 from hide[0] of him, 2 from hide[1], 1 from hide[2]); its sector of fire the half circle toward the enemy (facing f.a).
+   Sandbags: the places behind the wall, protected from the sectors within wall rad of its facing by how much of each stance its height hides.
+   A tunnel's mouth (done, live): all 3 (one goes under). Published when a work is begun, dug past min, its protection changes, or it goes
+   (the hooks on fortAt and fortDrop), and when a tunnel opens, is found or falls */
+const ABRT = { sec: 16, cell: 32, hide: [.95, .7, .4], wall: 1.2, ind: { trincheira: 0, saco: .25, tunel: 1 } };
+const abrMap = () => S.abr || (S.abr = new Map());
+const abrCell = (x, z) => Math.floor(x / ABRT.cell) * 65536 + Math.floor(z / ABRT.cell);
+const abrLvl = k => (k >= ABRT.hide[0] ? 3 : k >= ABRT.hide[1] ? 2 : k >= ABRT.hide[2] ? 1 : 0);
+const abrSec = a => ((Math.round(wrap(a) / (TAU / ABRT.sec)) % ABRT.sec) + ABRT.sec) % ABRT.sec;
+function abrPub(src, pts) {
+  const M = abrMap(), D = S.abrD || (S.abrD = new Set()), old = M.get(src);
+  if (old) for (const o of old) D.add(abrCell(o.x, o.z));
+  if (pts && pts.length) { M.set(src, pts); for (const o of pts) D.add(abrCell(o.x, o.z)); } else M.delete(src);
+  S.abrV = (S.abrV || 0) + 1;
+}
+/* every point published; those within r m of x z; the dirty cells since the last take (P2 rebuilds those) */
+const abrAll = () => [].concat(...abrMap().values());
+function abrNear(x, z, r, t) {
+  const out = [];
+  for (const L of abrMap().values()) for (const o of L) if (Math.abs(o.x - x) <= r && Math.abs(o.z - z) <= r && Math.hypot(o.x - x, o.z - z) <= r && (!o.ve || !isSide(t) || o.ve.includes(t))) out.push(o);
+  return out;
+}
+function abrTake() { const D = S.abrD || new Set(); S.abrD = new Set(); return D; }
+/* the points of work f now */
+function abrFort(f) {
+  const src = 'f' + f.id;
+  if (f.gone || f.dead || (f.k !== 1 && f.k !== 2) || f.prog < f.F.min) return abrPub(src, null);
+  const TR = FORT.trench, BG = FORT.bags, k = f.k === 1 ? 'trincheira' : 'saco', H = STANCE.map(s => s.h * MAN.sc), out = [];
+  const lv = f.k === 1 ? H.map(h => abrLvl((TR.depth * f.prog + TR.par) / h)) : H.map(h => abrLvl(BG.size[2] * f.prog / h));
+  const fa = wrap(f.a), set = f.k === 1 ? { a0: wrap(fa - Math.PI / 2), a1: wrap(fa + Math.PI / 2) } : { a0: wrap(fa - ABRT.wall), a1: wrap(fa + ABRT.wall) };
+  const p = Array.from({ length: ABRT.sec }, (_, i) => (f.k === 1 || Math.abs(wrap(i * TAU / ABRT.sec - fa)) <= ABRT.wall ? lv.slice() : [0, 0, 0]));
+  const y = f.k === 1 ? hgt(f.x, f.z) - TR.depth * f.prog : hgt(f.x, f.z);
+  for (const s of fortSlots(f)) out.push({ x: s.x, z: s.z, k, p, incl: null, cap: 1, dono: f.team, set, ind: ABRT.ind[k], y, src, f, slot: s });
+  f.abrK = lv.join();
+  abrPub(src, out);
+}
+fortAt = (g => (f, prog) => { const was = f.abrK; g(f, prog); if ((f.k === 1 || f.k === 2) && (f.prog >= f.F.min || was !== undefined)) { const H = STANCE.map(s => s.h * MAN.sc), lv = (f.k === 1 ? H.map(h => abrLvl((FORT.trench.depth * f.prog + FORT.trench.par) / h)) : H.map(h => abrLvl(FORT.bags.size[2] * f.prog / h))).join(); if (lv !== was || f.prog < f.F.min) abrFort(f); } })(fortAt);
+fortDrop = (g => f => { g(f); abrPub('f' + f.id, null); })(fortDrop);
+/* a tunnel's mouths, for its side and those that found them */
+function abrTun(tn) {
+  const src = 't' + tn.id;
+  if (!tunLive(tn) || tn.prog < 1) return abrPub(src, null);
+  const p = Array.from({ length: ABRT.sec }, () => [3, 3, 3]), out = [];
+  for (const w of ['a', 'b']) { const P = tunEnd(tn, w); out.push({ x: P.x, z: P.z, k: 'tunel', p, incl: null, cap: 6, dono: tn.team, set: null, ind: ABRT.ind.tunel, y: hgt(P.x, P.z), src, tn, w, ve: SIDES().filter(t => tunSeen(tn, t, w)) }); }
+  abrPub(src, out);
+}
+/* ----- the route edges (trRota): the corridors with exposure about 0, the tunnels out of sight and of hearing ----- */
+function trRota() {
+  const R = trNet(), out = [];
+  R.N.forEach((n, i) => { for (const [j, w] of n.e) if (i < j) out.push({ k: 'trincheira', a: { x: n.x, z: n.z }, b: { x: R.N[j].x, z: R.N[j].z }, len: w, exp: 0, vis: 1, som: 1, cid: n.c, i, j }); });
+  for (const tn of tunL()) if (tunLive(tn) && tn.prog >= 1) out.push({ k: 'tunel', a: { x: tn.a.x, z: tn.a.z }, b: { x: tn.b.x, z: tn.b.z }, len: tn.len, exp: 0, vis: 0, som: TUN.hear.go, t: tn.len / TUN.crawl + TUN.pad, dono: tn.team, tn, ve: SIDES().filter(t => tunSeen(tn, t, 'a') || tunSeen(tn, t, 'b')) });
+  return out;
+}
+/* ----- the hooks of "take the foot of a trench" and "clear a trench" (P3's procedures) -----
+   trPe(cid, from): the foot to take in corridor cid coming from `from` (a point): its node nearest from (an end or a joint), with the trench
+   it opens on. trLimpar(cid, from): the corridor bay by bay from that foot, nearest along the floor first: each step { x, z, f, s (m along
+   the floor from the foot), nade: the point of the next bay for the grenade (on the floor: nadeFloor), cobre: the next node past it (the
+   turn the man in front covers), foe: enemy soldiers of side t in that trench (f.in) when t is given }. trFoe(cid, t): how many of t's
+   enemies are in the corridor */
+function trPe(cid, from) {
+  const R = trNet(), I = R.cn[cid]; if (!I || !I.length) return null;
+  let b = -1, bd = Infinity; for (const i of I) { const d = Math.hypot(R.N[i].x - from.x, R.N[i].z - from.z); if (d < bd) { bd = d; b = i; } }
+  const n = R.N[b], f = R.L.find(f => f.tn.some(p => p.n === b));
+  return { x: n.x, z: n.z, n: b, f, d: bd };
+}
+function trLimpar(cid, from, t) {
+  const P = trPe(cid, from); if (!P) return [];
+  const R = trNet(), N = R.N, g = new Map([[P.n, 0]]), done = new Set();
+  for (;;) { let u = -1, bu = Infinity; for (const i of R.cn[cid]) if (!done.has(i) && g.has(i) && g.get(i) < bu) { bu = g.get(i); u = i; } if (u < 0) break; done.add(u); for (const [v, w] of N[u].e) if (!g.has(v) || bu + w < g.get(v)) g.set(v, bu + w); }
+  const bays = [];
+  for (const f of R.L) {
+    if (f.cid !== cid) continue;
+    for (const s of fortSlots(f)) {   // a bay's distance along the floor: through the nearer of its trench's nodes
+      const sl = (s.x - f.x) * f.tu[0] + (s.z - f.z) * f.tu[1]; let best = Infinity, via = null;
+      for (const q of f.tn) if (g.has(q.n)) { const d = g.get(q.n) + Math.abs(q.s - sl); if (d < best) { best = d; via = q; } }
+      if (best < Infinity) bays.push({ x: s.x, z: s.z, f, s: best, via, sl });
+    }
+  }
+  bays.sort((a, b) => a.s - b.s);
+  return bays.map((b, i) => {
+    const nx = bays[i + 1], tn = b.f.tn.filter(q => (q.s - b.sl) * (b.via ? Math.sign(b.sl - b.via.s) || 1 : 1) > 0).sort((p, q) => Math.abs(p.s - b.sl) - Math.abs(q.s - b.sl))[0];
+    return { x: b.x, z: b.z, f: b.f, s: b.s, nade: nx ? { x: nx.x, y: (typeof nadeFloor === 'function' ? nadeFloor(nx.x, nx.z) : hgt(nx.x, nx.z)) + .1, z: nx.z } : null, cobre: tn ? { x: N[tn.n].x, z: N[tn.n].z } : null, foe: isSide(t) && b.f.in ? SIDES().reduce((a, e) => a + (e !== t && foeSide(t, e) ? b.f.in[e] || 0 : 0), 0) : 0 };
+  });
+}
+const trFoe = (cid, t) => trNet().L.reduce((a, f) => a + (f.cid === cid && f.in ? SIDES().reduce((b, e) => b + (e !== t && foeSide(t, e) ? f.in[e] || 0 : 0), 0) : 0), 0);
+/* ----- the shelters near a soldier (for its mind until P2 serves them): the registry's points, the bushes and the brush ----- */
+/* shelters(o, r, opt): [{ k: trincheira | saco | tunel | moita | mato, x, z, c (concealment), p (protection 0..1 from the threat at opt.e, or the
+   best sector's without one), d, pt (the registry's point), o / dens }], best first ((c + 2 p) over 1 + d / r). opt.free: only places
+   nobody holds (default); opt.max (12); opt.e: the threat { x, z } */
+const SHL2 = { max: 12, c: { trincheira: FORT.trench.conceal, saco: FORT.bags.conceal, tunel: 1, moita: .6 } };
 function shelters(o, r, opt) {
   opt = opt || {}; r = r || 60;
-  const out = [], t = o.team, x = o.x, z = o.z, add = (k, px, pz, c, p, extra) => { const d = Math.hypot(px - x, pz - z); if (d <= r) out.push(Object.assign({ k, x: px, z: pz, c, p, d }, extra)); };
-  for (const f of S.forts || []) {
-    if (f.gone || f.prog < f.F.min || f.k > 2 || Math.abs(f.x - x) > r + 10 || Math.abs(f.z - z) > r + 10) continue;
-    if (isSide(t) && f.in && SIDES().some(e => e !== t && foeSide(t, e) && f.in[e])) continue;   // the enemy is in it
-    for (const p of fortSlots(f)) if (opt.free === false || !p.by || p.by === o || p.by.dead || S.t > p.T) add(f.k === 1 ? 'trench' : 'bags', p.x, p.z, (f.k === 1 ? COVR.trench : COVR.bags).c, (f.k === 1 ? COVR.trench : COVR.bags).p, { f, slot: p, cid: f.cid });
+  const out = [], t = o.team, x = o.x, z = o.z, st = o.man ? clamp(o.st | 0, 0, 2) : 1, add = (k, px, pz, c, p, extra) => { const d = Math.hypot(px - x, pz - z); if (d <= r) out.push(Object.assign({ k, x: px, z: pz, c, p, d }, extra)); };
+  for (const P of abrNear(x, z, r, t)) {
+    if (P.k === 'tunel' ? P.dono !== t : (P.f && isSide(t) && P.f.in && SIDES().some(e => e !== t && foeSide(t, e) && P.f.in[e]))) continue;   // not a mouth of the enemy's, not a work the enemy is in
+    if (P.slot && opt.free !== false && P.slot.by && P.slot.by !== o && !P.slot.by.dead && S.t <= P.slot.T) continue;
+    const pr = opt.e ? P.p[abrSec(Math.atan2(-(opt.e.z - P.z), opt.e.x - P.x))][st] / 3 : Math.max(...P.p.map(q => q[st])) / 3;
+    add(P.k, P.x, P.z, SHL2.c[P.k] || 0, pr, { pt: P });
   }
-  if (isSide(t)) for (const M of tunMouths(t)) if (M.own && M.tn.prog >= 1) add('tun', M.x, M.z, COVR.tun.c, COVR.tun.p, { tn: M.tn, w: M.w });
-  for (const b of near(x, z, r)) if (b.K && b.K.veil && S.os[b.id] < 2) add('bush', b.x, b.z, COVR.bush.c, COVR.bush.p, { o: b });
+  for (const b of near(x, z, r)) if (b.K && b.K.veil && S.os[b.id] < 2) add('moita', b.x, b.z, SHL2.c.moita, 0, { o: b });
   const U = S.T && S.T.ug;
-  if (U) { const c = U.c, n = Math.ceil(r / c); for (let j = -n; j <= n; j++) for (let i = -n; i <= n; i++) { const px = (Math.floor(x / c) + i + .5) * c, pz = (Math.floor((z + U.HW) / c) + j + .5) * c - U.HW, d = ugAt(px, pz); if (d >= UG.thr) add('brush', px, pz, UG.cov.c * d, COVR.brush.p, { dens: d }); } }
+  if (U) { const c = U.c, n = Math.ceil(r / c); for (let j = -n; j <= n; j++) for (let i = -n; i <= n; i++) { const px = (Math.floor(x / c) + i + .5) * c, pz = (Math.floor((z + U.HW) / c) + j + .5) * c - U.HW, d = ugAt(px, pz); if (d >= UG.thr) add('mato', px, pz, UG.cov.c * d, 0, { dens: d }); } }
   out.sort((a, b) => (b.c + 2 * b.p) / (1 + b.d / r) - (a.c + 2 * a.p) / (1 + a.d / r));
-  return out.slice(0, opt.max || COVR.max);
+  return out.slice(0, opt.max || SHL2.max);
 }
-/* ===== end of the trench corridors, tunnels and shelters ===== */
+/* ===== end of CEREBRO: trincheiras-tuneis ===== */
 /* ---------- the soldier's body and voice (cf-cerebro-soldado, part 1: what does not depend on how the soldier decides) ----------
    Seen in Defilade (docs/nao-testado/cf-cerebro-soldado.md) and asked by the captain: grenades that behave as grenades, cover read from
    the ground itself, a blast that throws a man and leaves him reeling, and soldiers that talk (balloons over their heads). How a soldier

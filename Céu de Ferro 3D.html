@@ -7480,7 +7480,7 @@ function explode(x, y, z, r, dmg, by, team, he, ob) {
   for (const m of S.men) {
     if (m.dead || safe(m, sb)) continue;
     const d = dist(m, o);
-    if (d < r) impact(m, HK.blast, dmg * (1 - d / r) * wall(m, bodyY(m)), by, x, y, z); else if (d < r * SUP.blast && m.ai) m.sup = S.t + SUP.t;
+    if (d < r) impact(m, HK.blast, dmg * (1 - d / r) * wall(m, bodyY(m)) * nadeFold(x, y, z, r, m), by, x, y, z); else if (d < r * SUP.blast && m.ai) m.sup = S.t + SUP.t;
   }
   if (S.civs) civBlast(x, y, z, r, dmg, by, wall);
   blastObjs(x, y, z, r, dmg, by, ob === undefined ? 1 : ob);
@@ -9663,7 +9663,7 @@ function toss(m, k) {
   if (k === 1) m.nades--; else m.smk--;
   m.ncool = S.t + MAN.nade.cool;
   const b = lobbed(m, TOSS[k], N, e.x, e.y, e.z, m.v.x + d.x * N.spd, d.y * N.spd, m.v.z + d.z * N.spd);
-  if (k === 1) b.fz = S.t + GRN.fuse;   // a hand grenade: on its fuse (nadeStep)
+  if (k === 1) { b.fz = S.t + Math.max(.3, GRN.fuse - (m.nCook || 0)); m.nCook = 0; if (m.nRb) { b.rb = 1; m.nRb = 0; } }   // a hand grenade: on its fuse (nadeStep), less what it cooked in the hand (NADE)
   if (S.net && (m === S.my || m.aid)) Net.toss(m, k, b);
   return b;
 }
@@ -10324,7 +10324,7 @@ function sqMan(m, A, q, best) {
   A.dhide = 0; A.dof = null;
   for (const b of S.bombs) if (b.k === 'nade' && b.by !== m && Math.abs(b.x - m.x) < I.nade && Math.abs(b.z - m.z) < I.nade && b.y - hgt(b.x, b.z) < 2) {   // a grenade by him: away from it
     const dx = m.x - b.x, dz = m.z - b.z, d = Math.hypot(dx, dz) || 1, p = clearOf(m.x + dx / d * 10, m.z + dz / d * 10, 1, {});
-    A.bx = A.gx = p.x; A.bz = A.gz = p.z; A.brk = S.t + 2; A.run = true; A.st = 0; return;
+    A.bx = A.gx = p.x; A.bz = A.gz = p.z; A.brk = Math.max(S.t + 2, b.fz === undefined ? 0 : b.fz + .3); A.run = true; A.st = 0; return;   // away until it has gone off (NADE: a fuse)
   }
   const o = best || (A.hurt && !A.hurt.dead && S.t - A.hurtT < 8 ? A.hurt : null);
   if (m.sup > S.t && !A.mv && !(q && q.hf) && !m.cbin && !m.fc && S.t > (A.brkT || 0) && cover(m).p < I.open) {   // pinned in the open: to the best cover near, whatever the order
@@ -11182,7 +11182,7 @@ function hopMan(m, ax, ay, az, bx, by, bz) {
    lies when the fuse has burnt, in the air if it was held too long. The same on every client: no chance in it */
 function nadeStep(b, dt) {
   const G = GRN, n = Math.min(12, Math.max(1, Math.ceil(Math.hypot(b.vx, b.vy, b.vz) * dt / G.step))), h = dt / n;
-  const floor = (x, z, y) => { const g = hgt(x, z), o = bldAt(x, z, 0); return o && y > o.y - .6 ? Math.max(g, o.y) : g; };
+  const floor = (x, z, y) => { const g = nadeFloor(x, z), o = bldAt(x, z, 0); return o && y > o.y - .6 ? Math.max(g, o.y) : g; };   // the floor of a trench it falls into (NADE)
   for (let i = 0; i < n; i++) {
     const x0 = b.x, y0 = b.y, z0 = b.z, rest = b.rest;
     if (!rest) b.vy -= GR * h;
@@ -12285,7 +12285,7 @@ const Net = {
   smoke(o) { const r = n => +n.toFixed(1); Net.mine(o, 'smoke', { p: [r(o.x), r(o.y), r(o.z)] }); },
   flare(o) { Net.mine(o, 'flare'); },
   shot(o, p, v, smk, he) { const r = n => +n.toFixed(1); Net.mine(o, 'shot', Object.assign({ p: p.map(r), v: v.map(r) }, smk && { s: 1 }, he && { h: 1 })); },
-  toss(o, k, b) { const r = n => +n.toFixed(1); Net.mine(o, 'toss', Object.assign({ k, p: [r(b.x), r(b.y), r(b.z)], v: [r(b.vx), r(b.vy), r(b.vz)] }, b.fz !== undefined ? { f: 1 } : {})); },   // f: on a fuse (GRN); an old client's grenade bursts where it lands
+  toss(o, k, b) { const r = n => +n.toFixed(1); Net.mine(o, 'toss', Object.assign({ k, p: [r(b.x), r(b.y), r(b.z)], v: [r(b.vx), r(b.vy), r(b.vz)] }, b.fz !== undefined ? { f: 1, fl: r(b.fz - S.t) } : {}, b.rb && { rb: 1 })); },   // f: on a fuse (GRN), fl: the fuse it has left (a cooked one less), rb: thrown back (its first copy goes); an old client's grenade bursts where it lands
   ohit(id, dmg) { Net.oh.set(id, Math.min(999, (Net.oh.get(id) || 0) + dmg)); },
   build(B) { const r = n => +n.toFixed(1); Net.send('build', { p: [r(B.x), r(B.z)], a: +B.a.toFixed(2) }); },
   /* every supply base there is, a row each: [id, side, x, z, heading, percent built, hp, stage (2: destroyed, for as long as its wreck lies)], and with lg the crates in it */
@@ -12333,7 +12333,7 @@ const Net = {
     const sl = S.men.filter(m => m.aid && !m.dead), n = Math.ceil(sl.length / AIROWS) || 1, ev = n > 1 ? 2 : 3;
     if (!(Net.tk = (Net.tk + 1) % ev)) {   // soldiers, AIROWS rows a message: every third tick, or with more than one message of them a part every second tick
       const K = Net.kits(), l = sl, i = (Net.mk = (Net.mk + 1) % n) * AIROWS;
-      Net.send('ai', { k: 2, e: l.slice(i, i + AIROWS).map(m => [m.aid, K.indexOf(m.id), m.team, hp(m), hot(m.arms[0].t, .1 * ev * n + .05) | (m.run ? 2 : 0), r(m.x, 1), r(m.z, 1), r(m.h, 2), m.st | m.w << 2 | (m.sq ? m.sq.id : 0) << 3]) });
+      Net.send('ai', { k: 2, e: l.slice(i, i + AIROWS).map(m => [m.aid, K.indexOf(m.id), m.team, hp(m), hot(m.arms[0].t, .1 * ev * n + .05) | (m.run ? 2 : 0), r(m.x, 1), r(m.z, 1), r(m.h, 2), m.st | m.w << 2 | (m.sq ? m.sq.id : 0) << 3, m.sayT > S.t ? m.sayK : 0]) });   // last: what he calls out (SAY)
     }
   },
   /* the host left and I am next: every AI ghost becomes a live entity where it stands, with fresh ammunition and its place on the nearest road */
@@ -12488,7 +12488,7 @@ const Net = {
       g = g || Net.ghosts.get(m.from);
       const w = g && g.net && g.man && !g.dead && (m.k === 1 ? MAN.nade : m.k === 2 ? MAN.smk : g.arms[1] && g.arms[1].d.k === (m.k ? 'mort' : 'heat') && g.arms[1].d);
       if (w && m.k > 2 && Array.isArray(m.p) && Array.isArray(m.v)) mortRound(g, w, m.k === 4, m.p[0], m.p[1], m.p[2], m.v[0], m.v[1], m.v[2]);
-      else if (w && Array.isArray(m.p) && Array.isArray(m.v)) { const b = lobbed(g, TOSS[m.k], w, m.p[0], m.p[1], m.p[2], m.v[0], m.v[1], m.v[2]); if (m.f && m.k === 1) b.fz = S.t + GRN.fuse; if (!m.k) fx.launch(false); }
+      else if (w && Array.isArray(m.p) && Array.isArray(m.v)) { if (m.rb && m.k === 1) nadeTaken(m.p[0], m.p[2]); const b = lobbed(g, TOSS[m.k], w, m.p[0], m.p[1], m.p[2], m.v[0], m.v[1], m.v[2]); if (m.f && m.k === 1) b.fz = S.t + (Number.isFinite(m.fl) ? clamp(m.fl, 0, GRN.fuse + 1) : GRN.fuse); if (!m.k) fx.launch(false); }
     },
     aitoss(m) { Net.rx.toss(m, Net.ai.get(m.id)); },
     ord(m) { Net.fireAs(Net.ghosts.get(m.from), m.i, m.target, m.m, m.tm); },
@@ -12521,6 +12521,7 @@ const Net = {
         const s = g.snap, dt = Math.max(.1, g.snapT ? S.t - g.snapT : .3);
         g.v = { x: clamp((e[5] - (g.lx === undefined ? e[5] : g.lx)) / dt, -7, 7), y: 0, z: clamp((e[6] - (g.lz === undefined ? e[6] : g.lz)) / dt, -7, 7) }; g.lx = e[5]; g.lz = e[6]; g.snapT = S.t;
         s.x = e[5]; s.z = e[6]; s.h = e[7]; s.age = 0; g.hp = e[3]; g.ctl.fire = !!(e[4] & 1); g.run = !!(e[4] & 2); g.st = e[8] & 3; g.w = g.arms[e[8] >> 2 & 1] ? e[8] >> 2 & 1 : 0; g.sid = e[8] >> 3;
+        if (Number.isInteger(e[9]) && e[9] > 0 && SAY.l[e[9] & 31]) { g.sayK = e[9]; g.sayT = S.t + SAY.life; }   // the host's soldier calls out (SAY)
       }
       else for (const e of m.e) {
         const [id, model, team, hp, f] = e, dead = !!(f & 4);
@@ -30925,6 +30926,164 @@ anaReport = (g => (ev, me) => {
   return R;
 })(anaReport);
 /* ===== end of the guerrilla mind ===== */
+/* ---------- the soldier's body and voice (cf-cerebro-soldado, part 1: what does not depend on how the soldier decides) ----------
+   Seen in Defilade (docs/nao-testado/cf-cerebro-soldado.md) and asked by the captain: grenades that behave as grenades, cover read from
+   the ground itself, a blast that throws a man and leaves him reeling, and soldiers that talk (balloons over their heads). How a soldier
+   chooses what to do with these (throw a grenade back, crawl, surrender, take a fallen mate's weapon, call contacts) waits for the
+   architecture of his mind (the research cf-cerebro-pesquisa); the pieces here are what that mind will call.
+   NADE, on top of the hand grenade's fuse, bounce and roll (GRN, nadeStep, cf-casas-paredes): it falls to the floor of a trench it lands
+   in (nadeFloor). A grenade kept in hand cooks: m.nCook s come off its fuse. An AI soldier who has a point to throw at (m.nAt, set before
+   c.nade) throws so as to land on it, at speed MAN.nade.spd, low (a window, a door) or high (over cover, into a trench) with err of the
+   distance off; on open ground short of it by short of the distance (shortMax m at most), for the bounce and the roll. Its blast, under fold m of radius, is cut to foldK by a fold of the ground between it and a man (the walls already cut it,
+   OBJS.shield; a trench, fortHit). Online the owner sends the fuse it has left (toss fl) and a grenade thrown back (rb), whose first copy
+   each client takes off (nadeTaken, taken m round where it was picked up) */
+const NADE = { fold: 16, foldK: .35, err: .06, taken: 3, short: .3, shortMax: 6 };
+/* where a grenade lies at x z: the ground, or the floor of a trench it fell into (GRN's nadeStep asks it) */
+function nadeFloor(x, z) { const g = hgt(x, z), f = typeof trenchAt === 'function' ? trenchAt(x, z, .2) : null; return f ? g - FORT.trench.depth * f.prog : g; }
+/* the AI's grenades and smoke are called out (SAY) */
+lobbed = (f => (m, k, o, x, y, z, vx, vy, vz) => {
+  const b = f(m, k, o, x, y, z, vx, vy, vz);
+  if (m.ai && !m.net && (k === 'nade' || k === 'smk')) say(m, k === 'nade' ? SAYC.frag : SAYC.smk);
+  return b;
+})(lobbed);
+/* the line to throw along to land at P from e, at speed v: low or high; null out of reach */
+function nadeAim(e, P, v, hi) {
+  const dx = P.x - e.x, dz = P.z - e.z, d = Math.hypot(dx, dz) || .1, hy = P.y - e.y, v2 = v * v, q = v2 * v2 - GR * (GR * d * d + 2 * hy * v2);
+  if (q < 0) return null;
+  const a = Math.atan((v2 + (hi ? 1 : -1) * Math.sqrt(q)) / (GR * d)), c = Math.cos(a);
+  return { x: dx / d * c, y: Math.sin(a), z: dz / d * c };
+}
+/* an AI soldier with a point to throw at (m.nAt: x y z, hi, t) throws a hand grenade to land on it, a little off; the rest throw along their aim */
+toss = (f => (m, k) => {
+  const P = k === 1 && m.ai && m.nAt && S.t - m.nAt.t < 3 ? m.nAt : null; m.nAt = null;
+  if (!P) return f(m, k);
+  const e = manEye(m), d = Math.hypot(P.x - e.x, P.z - e.z), r = d * NADE.err, a = rand(0, TAU), sh = P.hi || P.win ? 0 : Math.min(NADE.shortMax, d * NADE.short) / (d || 1);   // on open ground short of it, for the bounce and the roll
+  const Q = { x: P.x - (P.x - e.x) * sh + Math.cos(a) * r * Math.random(), y: P.y, z: P.z - (P.z - e.z) * sh + Math.sin(a) * r * Math.random() };
+  const D = nadeAim(e, Q, MAN.nade.spd, P.hi) || nadeAim(e, Q, MAN.nade.spd, !P.hi); if (!D) return f(m, k);
+  const f0 = m.f; m.f = { x: D.x, y: D.y - .45, z: D.z }; m.h = Math.atan2(-D.z, D.x);   // toss lifts the aim by .45: what goes in comes out as D
+  try { return f(m, k); } finally { m.f = f0; manDir(m); }
+})(toss);
+/* the point a soldier throws at to reach t: a man in a building through the nearest opening of its floor, one in a trench into it (high),
+   any other one at his feet; and a building with nobody known in it through the opening nearest to m */
+function nadeAt(m, t) {
+  const B = t && (t.B ? t : t.cbin && t.cbo ? t.cbo : null);
+  if (B && B.B && S.os[B.id] < 2) {
+    const L = t.B ? 0 : t.cbl | 0, w = bldWins(B, m.x - B.x, m.z - B.z).filter(p => p.l === L).sort((a, c) => hdist(a, m) - hdist(c, m))[0];
+    if (w) return { x: w.x, y: B.y + L * B.B.sh + 1.1, z: w.z, hi: false, win: true, t: S.t };
+  }
+  if (!t) return null;
+  return { x: t.x, y: (t.fc ? nadeFloor(t.x, t.z) : hgt(t.x, t.z)) + .1, z: t.z, hi: !!t.fc || (t.man && cover(t).p > 0), t: S.t };
+}
+/* a grenade picked up and thrown back by m at P (nadeAt's): the one on the ground is gone, the new one keeps what was left of its fuse */
+function nadeBack(m, b, P) {
+  if (!b || b.gone || b.fz === undefined) return null;
+  const left = b.fz - S.t; b.gone = true;
+  m.nades++; m.ncool = 0; m.nCook = GRN.fuse - left; m.nRb = 1; m.nAt = P ? Object.assign({}, P, { t: S.t }) : null;
+  const n = toss(m, 1); m.ncool = S.t + MAN.nade.cool; if (!n) { m.nades--; m.nCook = 0; m.nRb = 0; }
+  return n;
+}
+/* online: a grenade thrown back: the copy of the first one lying where it was picked up goes */
+function nadeTaken(x, z) { for (const b of S.bombs) if (b.k === 'nade' && !b.gone && Math.abs(b.x - x) < NADE.taken && Math.abs(b.z - z) < NADE.taken) b.gone = true; }
+/* how much of a small blast at x y z (radius r) reaches m past the ground: a fold between them cuts it to foldK */
+function nadeFold(x, y, z, r, m) {
+  if (r > NADE.fold || m.in) return 1;
+  const by = bodyY(m), y0 = y + .2;
+  for (let i = 1; i < 6; i++) { const k = i / 6, px = x + (m.x - x) * k, pz = z + (m.z - z) * k; if (y0 + (by - y0) * k < hgt(px, pz) + .05) return NADE.foldK; }
+  return 1;
+}
+/* CVR, cover read from the ground (no cover points marked anywhere): the best place within r m of m against an enemy at e (a point, or
+   null when the fire comes from nowhere known), as data for whatever decides to go there. Each place is scored by what stands between it
+   and e: the line from e cut by the ground, a wall or the woods (los) cut; what the ground there gives (coverAt: a wall or rubble on e's
+   side, a wood, a bush) prot; the bay of a standing building bay; the lee of a still vehicle or a hulk veh; a place in a trench of m's
+   side tr, behind its sandbags bag; the lee of a rock or a trunk rock; the bld best places the houses give against e (covBld,
+   cf-casas-paredes: outside a wall, wall; inside a window, bay); less the way to go (far of r), less a mate's place within gap m.
+   It reads: the ring round m, the buildings (covBld, drBldOk), the vehicles, the works, the rocks and trunks, the woods; the trenches as
+   corridors (cf-trincheiras-tuneis) are to come through the same fortSlots and trenchAt. Returns { x, z, b (a bay), sc, why } */
+const CVR = { cut: 2, prot: 1.4, back: .3, bay: 1.8, wall: 1.5, bld: 6, veh: 1.6, tr: 2.2, bag: 1.3, rock: .6, far: .9, gap: 2.5, eye: 1.8, body: 1 };
+function cvPick(m, e, r, used) {
+  const C = CVR, ey = e ? hgt(e.x, e.z) + C.eye : 0; let best = null;
+  const tryAt = (x, z, k, why, b) => {
+    if (hgt(x, z) < S.T.WL + .5) return;
+    const dm = Math.hypot(x - m.x, z - m.z); if (dm > r * 1.3) return;
+    if (used) for (const u of used) if (Math.abs(u.x - x) < C.gap && Math.abs(u.z - z) < C.gap) return;
+    coverAt(x, z, CV);
+    const side = !e || CV.all || (e.x - x) * CV.x + (e.z - z) * CV.z > 0, cut = !!e && !los(e, ey, { x, z }, hgt(x, z) + C.body);
+    const sc = (cut ? C.cut : 0) + (CV.p || (CV.b ? COVER.bush[2] : 0)) * (side ? C.prot : C.back) + k - dm / r * C.far;
+    if (!best || sc > best.sc) best = { x, z, b: b || undefined, sc, why: cut && !k ? 'dobra' : why };
+  };
+  const ux = e ? m.x - e.x : 0, uz = e ? m.z - e.z : 0, ul = Math.hypot(ux, uz) || 1, lee = (o, R) => (e ? { x: o.x + (o.x - e.x) / (Math.hypot(o.x - e.x, o.z - e.z) || 1) * R, z: o.z + (o.z - e.z) / (Math.hypot(o.x - e.x, o.z - e.z) || 1) * R } : { x: o.x + ux / ul * R, z: o.z + uz / ul * R });
+  tryAt(m.x, m.z, 0, 'aqui');
+  for (let i = 0; i < 16; i++) { const a = i * TAU / 8 + (i > 7 ? .4 : 0), R = i > 7 ? r : r * .5; tryAt(m.x + Math.cos(a) * R, m.z + Math.sin(a) * R, 0, 'chao'); }
+  if (e && typeof covBld === 'function') for (const c of covBld(m.x, m.z, r, e.x, e.z, m.team).slice(0, C.bld)) if (!c.l && c.k !== 'door') tryAt(c.x, c.z, c.k === 'wall' ? C.wall : C.bay, c.k === 'wall' ? 'parede' : 'janela', c.in ? { x: c.x, z: c.z, b: c.b, l: 0 } : null);   // the walls and windows of the houses (covBld, cf-casas-paredes): the ground storey
+  for (const o of near(m.x, m.z, r)) {
+    if (drBldOk(o)) { for (const p of bldBays(o, m.x, m.z).slice(0, 2)) tryAt(p.x, p.z, C.bay, 'predio', p); continue; }
+    if (S.os[o.id] < 2 && (o.K.rock || (o.K.sight && o.rd))) { const p = lee(o, (o.rd || 1) + 1.1); tryAt(p.x, p.z, C.rock, 'rocha'); }
+  }
+  for (const u of S.units) if (!u.dead && !u.def.vmax && Math.abs(u.x - m.x) < r && Math.abs(u.z - m.z) < r && Math.hypot(u.v.x, u.v.z) < 1) { const p = lee(u, Math.max(u.def.l || 5, u.def.w || 3) / 2 + 1.2); tryAt(p.x, p.z, C.veh, 'veiculo'); }
+  for (const f of S.forts) if (f.prog >= 1 && f.team === m.team && (f.k === 1 || f.k === 2) && Math.abs(f.x - m.x) < r && Math.abs(f.z - m.z) < r) for (const p of fortSlots(f)) if (!p.by || p.by === m || p.by.dead) tryAt(p.x, p.z, f.k === 1 ? C.tr : C.bag, f.k === 1 ? 'trincheira' : 'sacos');
+  if (best && !best.b) { const c = clearOf(best.x, best.z, 1, {}); best.x = c.x; best.z = c.z; }
+  return best || { x: m.x, z: m.z, sc: 0, why: 'aqui' };
+}
+/* SAY, what soldiers call out: a balloon over the head for life s, one call every gap s at most (a forced one cuts in), seen within r m
+   (an enemy's only while he is made out). A call is a code (SAYC) and, for some, an argument (a clock hour, 1 to 12); online the host's
+   soldiers carry it in their rows (code + 32 * argument), so a guest sees the host's calls and nothing else */
+const SAY = { life: 2.4, gap: 2.5, r: 140,
+  l: [null, a => (a ? 'Contato às ' + a + (a === 1 ? ' hora!' : ' horas!') : 'Contato!'), () => 'Granada!', () => 'Lá vai granada!', () => 'Médico!', () => 'Homem ferido!', () => 'Vou buscá-lo!',
+    () => 'Eu me rendo!', () => 'Mãos ao alto!', () => 'Drone!', () => 'Peguei a arma dele!', () => 'Fumaça!', () => 'Ao chão!', a => (a ? 'Blindado às ' + a + (a === 1 ? ' hora!' : ' horas!') : 'Blindado!'),
+    () => 'Avançar!', () => 'Recuar!', () => 'Cobrindo!', () => 'Fogo de longe!', () => 'Artilharia!', () => 'Aeronave!', () => 'Mina!', () => 'Atirador!', () => 'Emboscada!', () => 'Sem munição!',
+    () => 'Cessar fogo, são amigos!', () => 'O prédio vai cair, saiam!', () => 'Perímetro!', () => 'Por lances!', () => 'Fixar e flanquear!'] };
+const SAYC = { con: 1, nade: 2, frag: 3, med: 4, hurt: 5, fetch: 6, sur: 7, hands: 8, drone: 9, pick: 10, smk: 11, down: 12, armor: 13, adv: 14, back: 15, cover: 16, far: 17, arty: 18, air: 19, mine: 20, snp: 21, amb: 22, ammo: 23, ff: 24, bld: 25, per: 26, bound: 27, fix: 28 };
+function say(m, k, a, force) {
+  if (!m || m.dead || m.net || !k || (!force && S.t < (m.sayN || 0))) return;
+  m.sayK = k + 32 * clamp(a | 0, 0, 12); m.sayT = S.t + SAY.life; m.sayN = S.t + SAY.gap;
+}
+const sayText = m => { const k = m.sayK & 31, f = SAY.l[k]; return f ? f(m.sayK >> 5) : ''; };
+/* the clock hour of x z from m's facing (12 ahead, 3 on his right) */
+const sayClock = (m, x, z) => { const a = wrap(Math.atan2(-(z - m.z), x - m.x) - m.h); return ((Math.round(-a / (TAU / 12)) % 12) + 12) % 12 || 12; };
+/* the squads' drills already chosen say what they are (their leader calls it) */
+const SAYDR = { tanque: 'armor', anticarro: 'armor', artilharia: 'arty', predio: 'bld', contato: 'down', 'fogo-distante': 'far', emboscada: 'amb', 'emboscada-dist': 'amb', atirador: 'snp', aereo: 'air',
+  mina: 'mine', lances: 'bound', municao: 'ammo', recuo: 'back', romper: 'back', fumaca: 'smk', perimetro: 'per', 'fogo-amigo': 'ff', fixar: 'fix' };
+drRun = (f => (o, p) => {
+  const was = o.dr && o.dr.id; f(o, p);
+  if (o.men && o.dr && o.dr.id !== was && SAYDR[o.dr.id]) { const L = o.men.find(m => !m.dead && !m.down && m.ai); if (L) say(L, SAYC[SAYDR[o.dr.id]], 0, true); }
+})(drRun);
+/* a man who goes down calls for the medic, and the mate who goes for him says so (WND and its rescue: what they already do) */
+manDown = (f => (m, dmg, h) => { const r = f(m, dmg, h); if (r) { say(m, SAYC.med, 0, true); m.rsay = 0; } return r; })(manDown);
+sqRescue = (f => (q, live) => { f(q, live); for (const d of q.men) if (d.down && !d.dead && d.resc && !d.rsay && d.resc.ai && d.resc.ai.rsc === d) { d.rsay = 1; say(d.resc, SAYC.fetch, 0, true); } })(sqRescue);
+/* STUN, what a blast does to a man's body beyond its damage: within r of its radius (more the nearer and the bigger, k of it at least
+   to count), he is thrown push m away from it (less lying down, not in a trench, never through a wall) and reels for t s at most: an AI
+   soldier's aim spreads by sp, he does not fire in the first hold of it, and does not run. Each client throws only the men it moves (its
+   own player and, on the host, the AI's) */
+const STUN = { r: 1.6, k: .15, push: 2.2, t: 3.5, sp: .05, hold: .4, prone: .3 };
+explode = (f => (x, y, z, r, dmg, by, team, he, ob) => {
+  f(x, y, z, r, dmg, by, team, he, ob);
+  const R = r * STUN.r, w = Math.min(1, dmg / MAN.nade.dmg);
+  for (const m of S.men) {
+    if (m.dead || m.in || m.net || !(m.ai || m === S.my) || Math.abs(m.x - x) > R || Math.abs(m.z - z) > R) continue;
+    const d = Math.hypot(m.x - x, m.y - y, m.z - z); if (d >= R) continue;
+    const k = (1 - d / R) * w * nadeFold(x, y, z, r, m); if (k < STUN.k) continue;
+    m.stun = Math.max(m.stun || 0, S.t + STUN.t * k); m.stunT = STUN.t * k;
+    if (m.dg > 0) continue;
+    const hd = Math.hypot(m.x - x, m.z - z) || 1, L = STUN.push * k * (m.st === 2 ? STUN.prone : 1), nx = m.x + (m.x - x) / hd * L, nz = m.z + (m.z - z) / hd * L, hy = m.y + 1;
+    if (hgt(nx, nz) > S.T.WL + .2 && !walled(m.x, hy, m.z, nx, hy, nz)) { m.x = nx; m.z = nz; m.y = manY(nx, nz); }
+  }
+})(explode);
+aiMan = (g => (m, dt) => {
+  g(m, dt);
+  if (m.ctl.nade === 1 && !m.nAt && !m.down && !m.dead) { const q = m.sq, b = q && ((q.bd && q.bd.b) || q.rc); m.nAt = nadeAt(m, b && S.os[b.id] < 2 && hdist(b, m) < IAI.nade ? b : m.ai.tgt); }   // where the grenade he throws now is to land (NADE)
+  if (!(m.stun > S.t) || m.down || m.dead) return;
+  const c = m.ctl, k = (m.stun - S.t) / (m.stunT || 1);
+  c.sp = (c.sp || 0) + STUN.sp * k; c.run = false;
+  if (k > 1 - STUN.hold) c.fire = false;
+  const s = Math.sin(S.t * 5 + (m.ai.seed || 0)) * .35 * k; c.mx += -c.mz * s; c.mz += c.mx * s;   // he reels
+})(aiMan);
+/* the unit card says how many of the squad reel from a blast */
+genCard = (f => (t, id) => {
+  const c = f(t, id); if (!c) return c;
+  const q = S.squads.find(o => o.team === t && o.id === id), n = q ? q.men.filter(m => !m.dead && m.stun > S.t).length : 0;
+  if (n) c.see.splice(2, 0, n + (n === 1 ? ' homem atordoado' : ' homens atordoados') + ' por explosão');
+  c.stun = n; return c;
+})(genCard);
 /* ---------- 3D scene (three.js) ---------- */
 const $ = s => document.querySelector(s);
 const cv = $('#cv'), hudCv = $('#hud'), hx = hudCv.getContext('2d');
@@ -33653,6 +33812,14 @@ function drawHud() {
     if (!onScr(s) || hid(P, g) || walled(cp.x, cp.y, cp.z, g.x, g.y + 1.5, g.z)) continue;
     if (g.team === me) tri(s.x, s.y - 6, Math.PI / 2, 3.5, FRIEND);
     if (g.pid) txt(g.name, s.x, s.y - 12 - 12 * u, 12 * u, g.team !== me ? FOE : FRIEND, 'center');
+  }
+  for (const g of S.men) {   // what soldiers call out (SAY): a balloon over the head, an enemy's only while he is made out
+    if (g === P || g.dead || g.in || !(g.sayT > S.t) || Math.abs(g.x - P.x) > SAY.r || Math.abs(g.z - P.z) > SAY.r || dist(g, P) > SAY.r || (g.team !== me && hid(P, g))) continue;
+    const s = proj(g.x, g.y + STANCE[g.st].h * MAN.sc + 1.3, g.z); if (!onScr(s) || walled(cp.x, cp.y, cp.z, g.x, g.y + 1.5, g.z)) continue;
+    const t = sayText(g); if (!t) continue;
+    const sz = 11 * u; hx.font = sz + "px 'Share Tech Mono', ui-monospace, monospace"; const w = hx.measureText(t).width + 8 * u, h = sz + 6 * u, bx = s.x - w / 2, by = s.y - h - 6 * u;
+    hx.fillStyle = 'rgba(240,236,220,.88)'; hx.fillRect(bx, by, w, h); hx.beginPath(); hx.moveTo(s.x - 4 * u, by + h); hx.lineTo(s.x, by + h + 5 * u); hx.lineTo(s.x + 4 * u, by + h); hx.fill();
+    hx.textAlign = 'center'; hx.fillStyle = g.team === me ? '#15301c' : '#4a1210'; hx.fillText(t, s.x, by + h - 4 * u);
   }
   for (const b of S.sup) {   // supply bases: one's own side's always, the enemy's while it is spotted
     const own = b.team === me, d = hdist(b, P), col = own ? FRIEND : FOE;

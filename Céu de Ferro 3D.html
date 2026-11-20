@@ -7481,7 +7481,7 @@ function explode(x, y, z, r, dmg, by, team, he, ob) {
   for (const m of S.men) {
     if (m.dead || safe(m, sb)) continue;
     const d = dist(m, o);
-    if (d < r) impact(m, HK.blast, dmg * (1 - d / r) * wall(m, bodyY(m)), by, x, y, z); else if (d < r * SUP.blast && m.ai) m.sup = S.t + SUP.t;
+    if (d < r) impact(m, HK.blast, dmg * (1 - d / r) * wall(m, bodyY(m)) * nadeFold(x, y, z, r, m), by, x, y, z); else if (d < r * SUP.blast && m.ai) m.sup = S.t + SUP.t;
   }
   if (S.civs) civBlast(x, y, z, r, dmg, by, wall);
   blastObjs(x, y, z, r, dmg, by, ob === undefined ? 1 : ob);
@@ -9618,6 +9618,10 @@ function killMan(m, by) {
 function manDir(m) { const cp = Math.cos(m.ap); m.f = { x: Math.cos(m.h) * cp, y: Math.sin(m.ap), z: -Math.sin(m.h) * cp }; }
 /* what a soldier's special does when it goes. relay: how its owner tells the room (a guided one as ord, with its target; the others as toss) */
 const TOSS = ['heat', 'nade', 'smk'];
+/* a hand grenade flies, bounces and rolls until its fuse burns down, fuse s after the throw (a drone's grenade still bursts where it lands).
+   e: the share of its speed across a wall or the ground it keeps off it; f: what a bounce leaves of its speed along the ground; roll: how
+   fast rolling slows it (1/s); slope: the share of the ground's slope that rolls it; r: its radius; step: m at most it moves between looks */
+const GRN = { fuse: 3.6, e: .32, f: .6, roll: 2.4, slope: .6, r: .08, step: 1.2, car: [2.4, 2.6] };
 function lobbed(m, k, o, x, y, z, vx, vy, vz) { const b = { k, x, y, z, vx, vy, vz, o, team: m.team, by: m, life: 8 }; S.bombs.push(b); return b; }
 const MSHOT = {
   heat(m, w, e, d) { fx.launch(m === S.my); puff(e.x - d.x * 2, e.y, e.z - d.z * 2, 'dust', 1.2); return lobbed(m, 'heat', w, e.x + d.x, e.y + d.y, e.z + d.z, d.x * w.spd, d.y * w.spd, d.z * w.spd); },
@@ -9661,6 +9665,7 @@ function toss(m, k) {
   if (k === 1) m.nades--; else m.smk--;
   m.ncool = S.t + MAN.nade.cool;
   const b = lobbed(m, TOSS[k], N, e.x, e.y, e.z, m.v.x + d.x * N.spd, d.y * N.spd, m.v.z + d.z * N.spd);
+  if (k === 1) { b.fz = S.t + Math.max(.3, GRN.fuse - (m.nCook || 0)); m.nCook = 0; if (m.nRb) { b.rb = 1; m.nRb = 0; } }   // a hand grenade: on its fuse (nadeStep), less what it cooked in the hand (NADE)
   if (S.net && (m === S.my || m.aid)) Net.toss(m, k, b);
   return b;
 }
@@ -9845,6 +9850,7 @@ function orgPoly(p) {
    perimeter was formed for (q.drPer: the end of a walk, its order, or the meeting place for its ride), his place in the ring */
 const slot = (q, i) => {
   const O = q.ord, X = q.bg && !q.state ? q.bg[i] : null; if (X) return X;
+  const W = q.at && !q.state && O ? cgnWork(q, O) : null; if (W) { const l = cgnPts(q, W); return l[i % l.length]; }   // at a work it builds: by the work, not in the houses or the trenches near (CGN)
   const P = q.drPer; if (P && !q.state && P.p[i] && (P.h === O ? q.at : P.h === q.rd && q.halt && q.rd.st !== 'ride')) return P.p[i];
   if (q.at && !q.state && O && O.x !== undefined) { const P = q.pts || (q.pts = ptPts(q, O) || postPts(q.team, O.x, O.z, Math.max(q.n0, 1), O.R, O.k)); return P[i % P.length]; }
   if (ORG.on) return orgSlot(q, i);   // on the move: the formation of the situation (ORG)
@@ -10320,7 +10326,7 @@ function sqMan(m, A, q, best) {
   A.dhide = 0; A.dof = null;
   for (const b of S.bombs) if (b.k === 'nade' && b.by !== m && Math.abs(b.x - m.x) < I.nade && Math.abs(b.z - m.z) < I.nade && b.y - hgt(b.x, b.z) < 2) {   // a grenade by him: away from it
     const dx = m.x - b.x, dz = m.z - b.z, d = Math.hypot(dx, dz) || 1, p = clearOf(m.x + dx / d * 10, m.z + dz / d * 10, 1, {});
-    A.bx = A.gx = p.x; A.bz = A.gz = p.z; A.brk = S.t + 2; A.run = true; A.st = 0; return;
+    A.bx = A.gx = p.x; A.bz = A.gz = p.z; A.brk = Math.max(S.t + 2, b.fz === undefined ? 0 : b.fz + .3); A.run = true; A.st = 0; return;   // away until it has gone off (NADE: a fuse)
   }
   const o = best || (A.hurt && !A.hurt.dead && S.t - A.hurtT < 8 ? A.hurt : null);
   if (m.sup > S.t && !A.mv && !(q && q.hf) && !m.cbin && !m.fc && S.t > (A.brkT || 0) && cover(m).p < I.open) {   // pinned in the open: to the best cover near, whatever the order
@@ -10390,7 +10396,7 @@ function cmdPoints(C, sq) {
     if (p.hold !== t || p.base >= 0 || cmdKnown(C, p.x, p.z, CMD.thr) <= 2 || sq.filter(q => q.ord.tw === p && (q.ord.k === 'hold' || q.ord.k === 'withdraw')).length >= D.need) continue;
     let best = null, bd = 2500;
     for (const q of sq) {
-      if (q.op || q.live < 3 || q.state || q.lift || q.ord.b || !(FREE[q.job] || (q.job === 'eng' && q.ord.k === 'hold')) || q.ri !== p.ri || (q.ord.tw && q.ord.tw.hold === t) || q.ord.k === 'supply') continue;
+      if (q.op || q.live < 3 || q.state || q.lift || q.ord.b || !(FREE[q.job] || (q.job === 'eng' && q.ord.k === 'hold')) || q.ri !== p.ri || (q.ord.tw && q.ord.tw.hold === t) || q.ord.k === 'supply' || q.ord.k === 'build') continue;   // nor one on its way to build a base (CGN)
       const L = q.men.find(m => !m.dead), d = L ? hdist(L, p) - (q.job === 'eng' ? 1000 : 0) : 1e9; if (d < bd) { bd = d; best = q; }   // the engineers first, to dig it in
     }
     if (best) { genCmd(t, { c: 'hold', pi: S.cq.p.indexOf(p), ids: [best.id] }, 'ai', { p, q: best }); return; }
@@ -10722,22 +10728,27 @@ function aiSite(t) {
 /* the planner's hand on the bases of side t: a squad to build each unfinished site and to guard each finished one, a new site while the
    side is short of them, the charge of an assault squad that has reached an enemy base, and the squads that fall back to resupply */
 function planSup(t, sq, F) {
-  const A = BLD.ai, mine = S.sup.filter(b => b.team === t && !b.dead), free = q => q.ord.k === 'hold' && !q.ord.b && !q.halt && !q.lift && !(q.op && q.op.k === 'usr') && (q.job === 'eng' || q.job === 'line' || q.job === 'held');   // a squad the general ordered by hand is his
+  const A = BLD.ai, mine = S.sup.filter(b => b.team === t && !b.dead), free = q => q.ord.k === 'hold' && !q.ord.b && !q.halt && !q.lift && !q.op && (q.job === 'eng' || q.job === 'line' || q.job === 'held');   // a squad the general ordered by hand is his, and one in a manoeuvre or an ambush is its operation's (CGN)
   const whole = m => m.dead || (m.hp >= m.max * .9 && m.arms[0].res >= m.arms[0].d.mags - 1 && !(m.def.mort && m.arms[1].res < m.arms[1].d.n - 2)), low = m => !m.dead && (m.hp < m.max * A.hp || m.arms[0].res <= 0 || (!!m.def.mort && m.arms[1].mag + m.arms[1].res <= 2));
   if (S.net && !Net.sb) return;
   for (const b of mine) {
-    const q = sq.find(q => q.ord.b === b) || sq.filter(q => free(q) && q.ri === b.ri && Math.abs(q.s - b.s) < A.fall).sort((x, y) => (x.job === 'eng' ? 0 : 1) - (y.job === 'eng' ? 0 : 1) || Math.abs(x.s - b.s) - Math.abs(y.s - b.s))[0];
+    if (b.prog >= 1 && b.upT === undefined) b.upT = S.t;
+    { const on = sq.filter(q => q.ord.b === b), gd = on.some(q => q.job === 'guard');   // its builders go back to their own work once it is up and guarded, the engineers after CGN.rel s anyway (CGN)
+      for (const q of on) if (b.prog >= 1 && q.job !== 'guard' && !q.op && (gd || (q.job === 'eng' && S.t - b.upT > CGN.rel))) { cgnHome(t, q); gLog(t, 'sup', 'Base de suprimento pronta na rota ' + (b.ri + 1) + ': ' + sqName(q) + ' volta ao seu trabalho', b, 'cgnb' + b.id + q.id); } }
+    const q = sq.find(q => q.ord.b === b) || sq.filter(q => free(q) && (b.prog < 1 || q.job !== 'eng') && q.ri === b.ri && Math.abs(q.s - b.s) < A.fall).sort((x, y) => (x.job === 'eng' ? 0 : 1) - (y.job === 'eng' ? 0 : 1) || Math.abs(x.s - b.s) - Math.abs(y.s - b.s))[0];
     if (q && q.ord.b !== b) setOrd(q, { k: b.prog < 1 ? 'build' : 'hold', ri: b.ri, s: b.s, x: b.x, z: b.z, a: b.a, R: b.prog < 1 ? 9 : A.guard, b });
     else if (q && q.ord.k === 'build' && b.prog >= 1) setOrd(q, Object.assign({}, q.ord, { k: 'hold', R: A.guard }));
   }
   if (S.t >= F.bT && genBy(t, 'sup') === 'ai' && !sq.some(q => q.ord.k === 'build' && !q.ord.b) && bmrPay(t, BLD.cost, 'sup')) {   // within the works' budget (BMR)
-    const O = aiSite(t), q = O && sq.filter(q => free(q) && q.ri === O.ri && q.fd > BMR.sup.quiet && Math.abs(q.s - O.s) < A.fall).sort((x, y) => bmrKitOf(y) - bmrKitOf(x) || Math.abs(x.s - O.s) - Math.abs(y.s - O.s))[0];   // a squad with a build kit first
+    const O = aiSite(t), q = O && cgnSupBy(sq, O, free);   // a squad with a build kit first, the engineers next, from any road it can walk from (CGN)
     if (q) genCmd(t, { c: 'sup', ri: O.ri, s: O.s, x: O.x, z: O.z, a: O.a, ids: [q.id] }, 'ai', { O, q });
+    else F.bT = S.t + CGN.look;   // nobody to send: look again in a while
   }
   for (const q of sq) {
     const O = q.ord, L = q.men.find(m => !m.dead);
     if (q.op && !(q.op.k === 'amb' && !q.op.sprung)) continue;   // on an operation of the commander's
     if (q.lift) continue;
+    if (O.k === 'build' && !O.b && S.t - (O.cgT || (O.cgT = S.t)) > CGN.walk) { gLog(t, 'sup', sqName(q) + ' não chegou ao lugar da base de suprimento na rota ' + (O.ri + 1) + ': desiste', O, 'cgnw' + q.id); cgnHome(t, q); continue; }   // never there: the next site is not held up by it (CGN)
     if (O.k === 'build' && !O.b && q.at && L && hdist(L, O) < 30) { const b = startSite(t, O.x, O.z, O.a); if (b) { O.b = b; bmrKitUse(q); } else setOrd(q, { k: 'hold', ri: O.ri, s: O.s, x: O.x, z: O.z }); }
     else if ((O.b && O.b.dead) || (O.raid && O.raid.dead)) setOrd(q, O.back || (O.raid ? (q.job === 'push' && post(t, 'push', q.jk)) || pushOrd(t) : { k: 'hold', ri: q.ri, s: q.s, x: O.x, z: O.z }));
     else if (O.raid) { if (q.at) for (const m of q.men) if (!m.dead && plant(m, O.raid)) break; }
@@ -11169,6 +11180,45 @@ function hopMan(m, ax, ay, az, bx, by, bz) {
   else { let a = (lo - ay) / dy, b = (hi - ay) / dy; if (a > b) { const q = a; a = b; b = q; } t0 = Math.max(t0, a); t1 = Math.min(t1, b); }
   return t0 <= t1 ? t0 : -1;
 }
+/* a hand grenade on its fuse: off walls, floors and hulls it bounces, on the ground it rolls (downhill too) and stops; it bursts where it
+   lies when the fuse has burnt, in the air if it was held too long. The same on every client: no chance in it */
+function nadeStep(b, dt) {
+  const G = GRN, n = Math.min(12, Math.max(1, Math.ceil(Math.hypot(b.vx, b.vy, b.vz) * dt / G.step))), h = dt / n;
+  const floor = (x, z, y) => { const g = nadeFloor(x, z), o = bldAt(x, z, 0); return o && y > o.y - .6 ? Math.max(g, o.y) : g; };   // the floor of a trench it falls into (NADE)
+  for (let i = 0; i < n; i++) {
+    const x0 = b.x, y0 = b.y, z0 = b.z, rest = b.rest;
+    if (!rest) b.vy -= GR * h;
+    let x1 = x0 + b.vx * h, y1 = y0 + b.vy * h, z1 = z0 + b.vz * h;
+    const wo = y1 < hgt(x1, z1) + OBJS.air && (x1 !== x0 || y1 !== y0 || z1 !== z0) ? ray(x0, y0, z0, x1, y1, z1, 0) : null;
+    if (wo) {   // a wall, a slab or anything standing: back off it, and the speed across it turned and cut
+      const t = Math.max(0, RAY.t - .02), an = RAY.ax, sg = RAY.sg, c = wo.c === undefined ? 1 : wo.c, s = wo.s || 0;
+      const nx = an === 0 ? c * sg : an === 2 ? s * sg : 0, ny = an === 1 ? sg : 0, nz = an === 0 ? -s * sg : an === 2 ? c * sg : 0, vn = b.vx * nx + b.vy * ny + b.vz * nz;
+      x1 = x0 + (x1 - x0) * t; y1 = y0 + (y1 - y0) * t; z1 = z0 + (z1 - z0) * t;
+      if (vn < 0) { b.vx -= (1 + G.e) * vn * nx; b.vy -= (1 + G.e) * vn * ny; b.vz -= (1 + G.e) * vn * nz; }
+      if (ny > .5) { b.vx *= G.f; b.vz *= G.f; if (Math.abs(b.vy) < 1) { b.vy = 0; y1 = y0; } }   // on a floor upstairs: it settles there
+    }
+    for (const u of S.units) {   // a hull: off it
+      if (u.dead || Math.abs(u.x - x1) > 8 || Math.abs(u.z - z1) > 8) continue;
+      const t = hopBox(u, x0, y0, z0, x1, y1, z1, G.car[0], G.car[1]); if (t < 0) continue;
+      x1 = x0; y1 = y0; z1 = z0; b.vx *= -G.e; b.vz *= -G.e; break;
+    }
+    const g = floor(x1, z1, y1) + G.r;
+    if (y1 <= g) {   // the ground: a bounce, then a roll that slows and follows the slope
+      y1 = g;
+      if (b.vy < -1.2) { b.vy = -b.vy * G.e; b.vx *= G.f; b.vz *= G.f; b.rest = 0; }
+      else {
+        b.vy = 0; b.rest = 1;
+        const sx = hgt(x1 + .5, z1) - hgt(x1 - .5, z1), sz = hgt(x1, z1 + .5) - hgt(x1, z1 - .5), k = Math.max(0, 1 - G.roll * h);
+        b.vx = (b.vx - GR * G.slope * sx * h) * k; b.vz = (b.vz - GR * G.slope * sz * h) * k;
+        if (b.vx * b.vx + b.vz * b.vz < .01 && Math.abs(sx) + Math.abs(sz) < .12) b.vx = b.vz = 0;
+      }
+    } else if (y1 > g + .05) b.rest = 0;
+    b.x = x1; b.y = y1; b.z = z1;
+  }
+  if (S.t < b.fz && b.life > 0) return;
+  b.gone = true;
+  explode(b.x, b.y + .25, b.z, b.o.r, b.o.dmg, b.by, b.team, b.o.frag, OBJD.nade.blast);
+}
 function stepShots(dt) {
   for (const b of S.bullets) {
     const x0 = b.x, y0 = b.y, z0 = b.z;
@@ -11182,7 +11232,7 @@ function stepShots(dt) {
     }
     if (b.gone) continue;
     if (b.y < 400) {
-      const g = hgt(b.x, b.z), wo = b.y < g + OBJS.air ? ray(x0, y0, z0, b.x, b.y, b.z, 0) : null, back = wo ? dt * RAY.t : dt, an = RAY.ax, sg = RAY.sg;
+      const g = hgt(b.x, b.z), wo = b.y < g + OBJS.air ? ray(x0, y0, z0, b.x, b.y, b.z, 0) : null, back = wo ? dt * RAY.t : dt, an = RAY.ax, sg = RAY.sg, we = wo && wo.B ? RAY.e : -1;
       if (wo) { b.x = x0 + (b.x - x0) * RAY.t; b.y = y0 + (b.y - y0) * RAY.t; b.z = z0 + (b.z - z0) * RAY.t; }   // it stops at the wall, unless something stood in front of it
       if (b.y < g + (S.cbup ? OBJS.air : 6) || wo) {
         for (const u of S.units) {
@@ -11199,7 +11249,11 @@ function stepShots(dt) {
           if (d < SUP.r && y < H + SUP.r && m.ai && !m.net) { if (!(m.sq && m.sq.ord && m.sq.ord.k === 'assault' && b.by && hdist(b.by, m) > IAI.fire)) m.sup = S.t + SUP.t; drInc(m, b.by, b.vx, b.vz, 1); }   // an assault is not pinned by fire from beyond a rifle's reach; its squad still hears it (its drill wants more of it)
         }
         if (!b.gone && S.civs && civBullet(b, back)) b.gone = true;
-        if (!b.gone && wo) { RAY.ax = an; RAY.sg = sg; shotObj(wo, b, b.dmg * (b.sa ? OBJD.sa : OBJD.gun[0] + OBJD.gun[1] * Math.min(1, b.ap || 0)) * wo.K.take[0], b.x, b.y, b.z, b.vx, b.vy, b.vz); b.gone = true; if (Math.random() < .5) puff(OUT.x, OUT.y, OUT.z, 'dust', .8); }
+        if (!b.gone && wo) {   // a wall: struck, and gone through when the round has the power for it (bThru)
+          RAY.o = wo; RAY.e = we; RAY.ax = an; RAY.sg = sg; shotObj(wo, b, b.dmg * (b.sa ? OBJD.sa : OBJD.gun[0] + OBJD.gun[1] * Math.min(1, b.ap || 0)) * wo.K.take[0], b.x, b.y, b.z, b.vx, b.vy, b.vz);
+          if (Math.random() < .5) puff(OUT.x, OUT.y, OUT.z, 'dust', .8);
+          if (!(we >= 0 && S.os[wo.id] < 2 && bThru(b, wo, we, an))) b.gone = true;
+        }
         if (!b.gone && b.y <= g) { b.gone = true; if (Math.random() < .5) puff(b.x, g + .5, b.z, 'dust', .8); }
         if (b.gone) { if (b.fr) explode(b.x, Math.max(b.y, g + .3), b.z, b.fr[0], b.fr[1], b.by, b.team); continue; }   // a fragmenting round bursts where it stops
       }
@@ -11212,6 +11266,7 @@ function stepShots(dt) {
   }
   for (const b of S.bombs) {   // a shell is fast enough to skip a vehicle in one step, so it moves in short hops
     b.life -= dt;
+    if (b.fz !== undefined) { nadeStep(b, dt); continue; }   // a hand grenade on its fuse
     const he = b.k === 'he', heat = b.k === 'heat', hv = b.k === 'shell' && b.o.he, sh = he || b.k === 'shell', n = sh ? Math.ceil(Math.hypot(b.vx, b.vy, b.vz) * dt / 5) : 1, h = dt / n, top = sh || heat ? 6.5 : 4;
     if (he) incoming(b, dt);
     for (let i = 0; i < n && !b.gone; i++) {
@@ -11220,6 +11275,7 @@ function stepShots(dt) {
       b.x += b.vx * h; b.y += b.vy * h; b.z += b.vz * h;
       let g = hgt(b.x, b.z); const D = OBJD[hv ? 'he' : b.k];
       let wo = b.y < g + OBJS.air ? ray(x0, y0, z0, b.x, b.y, b.z, 0) : null;
+      const we = wo && wo.B ? RAY.e : -1, wan = RAY.ax;
       if (wo) { b.x = x0 + (b.x - x0) * RAY.t; b.y = y0 + (b.y - y0) * RAY.t; b.z = z0 + (b.z - z0) * RAY.t; }   // the hop ends at the wall; what stood right before it is still struck first
       let du = null, dc = null, bt = 2;
       if (Math.min(y0, b.y) < g + 10) {   // swept: the first vehicle, soldier or civilian anywhere on the hop, before the wall or the ground that ends it
@@ -11234,7 +11290,12 @@ function stepShots(dt) {
       if (!hit && b.k !== 'bomb') for (const p of S.planes) if (!p.dead && !safe(p, b) && dist(p, b) < 9) { impact(p, HK.missile, b.o.dmg, b.by, b.x, b.y, b.z, b.vx - p.v.x, b.vy - p.v.y, b.vz - p.v.z); hit = true; break; }
       if (hit) wo = null; else if (!wo) continue;
       b.gone = true;
-      if (wo) { const P = shotObj(wo, b, b.smk ? 0 : (he || hv ? b.o.hit : b.o.dmg) * D.hit, b.x, b.y, b.z, b.vx, b.vy, b.vz); b.x = P.x; b.y = P.y; b.z = P.z; }
+      if (wo) {
+        const hx = b.x, hy = b.y, hz = b.z; RAY.o = wo; RAY.e = we; RAY.ax = wan;
+        const P = shotObj(wo, b, b.smk ? 0 : (he || hv ? b.o.hit : b.o.dmg) * D.hit, b.x, b.y, b.z, b.vx, b.vy, b.vz);
+        if (we >= 0 && b.k === 'shell' && !hv && (b.np | 0) < CITY.pen.shell) { b.np = (b.np | 0) + 1; b.x = hx; b.y = hy; b.z = hz; b.gone = false; bOut(b, wo, we, wan); continue; }   // solid shot: a house wall does not stop it
+        b.x = P.x; b.y = P.y; b.z = P.z;
+      }
       if (dc && (sh || heat)) { const h = manHit(dc, HK.shell, he || hv ? b.o.hit : b.o.dmg, b.x, b.y, b.z, b.vx, b.vz); if (h) civHurt(dc, h.dmg, b.by); }   // a civilian in the way, struck as a soldier would be
       if (b.k === 'smk') addSmoke(b.x, wo ? hgt(b.x, b.z) : g, b.z, b.o.r, b.o.h);
       else if (b.smk) { addSmoke(b.x, hgt(b.x, b.z), b.z, b.smk.r, b.smk.h, b.smk.life); if (b.by === S.my) S.falls.push({ x: b.x, z: b.z, life: HOW.mark }); }
@@ -12226,7 +12287,7 @@ const Net = {
   smoke(o) { const r = n => +n.toFixed(1); Net.mine(o, 'smoke', { p: [r(o.x), r(o.y), r(o.z)] }); },
   flare(o) { Net.mine(o, 'flare'); },
   shot(o, p, v, smk, he) { const r = n => +n.toFixed(1); Net.mine(o, 'shot', Object.assign({ p: p.map(r), v: v.map(r) }, smk && { s: 1 }, he && { h: 1 })); },
-  toss(o, k, b) { const r = n => +n.toFixed(1); Net.mine(o, 'toss', { k, p: [r(b.x), r(b.y), r(b.z)], v: [r(b.vx), r(b.vy), r(b.vz)] }); },
+  toss(o, k, b) { const r = n => +n.toFixed(1); Net.mine(o, 'toss', Object.assign({ k, p: [r(b.x), r(b.y), r(b.z)], v: [r(b.vx), r(b.vy), r(b.vz)] }, b.fz !== undefined ? { f: 1, fl: r(b.fz - S.t) } : {}, b.rb && { rb: 1 })); },   // f: on a fuse (GRN), fl: the fuse it has left (a cooked one less), rb: thrown back (its first copy goes); an old client's grenade bursts where it lands
   ohit(id, dmg) { Net.oh.set(id, Math.min(999, (Net.oh.get(id) || 0) + dmg)); },
   build(B) { const r = n => +n.toFixed(1); Net.send('build', { p: [r(B.x), r(B.z)], a: +B.a.toFixed(2) }); },
   /* every supply base there is, a row each: [id, side, x, z, heading, percent built, hp, stage (2: destroyed, for as long as its wreck lies)], and with lg the crates in it */
@@ -12274,7 +12335,7 @@ const Net = {
     const sl = S.men.filter(m => m.aid && !m.dead), n = Math.ceil(sl.length / AIROWS) || 1, ev = n > 1 ? 2 : 3;
     if (!(Net.tk = (Net.tk + 1) % ev)) {   // soldiers, AIROWS rows a message: every third tick, or with more than one message of them a part every second tick
       const K = Net.kits(), l = sl, i = (Net.mk = (Net.mk + 1) % n) * AIROWS;
-      Net.send('ai', { k: 2, e: l.slice(i, i + AIROWS).map(m => [m.aid, K.indexOf(m.id), m.team, hp(m), hot(m.arms[0].t, .1 * ev * n + .05) | (m.run ? 2 : 0), r(m.x, 1), r(m.z, 1), r(m.h, 2), m.st | m.w << 2 | (m.sq ? m.sq.id : 0) << 3]) });
+      Net.send('ai', { k: 2, e: l.slice(i, i + AIROWS).map(m => [m.aid, K.indexOf(m.id), m.team, hp(m), hot(m.arms[0].t, .1 * ev * n + .05) | (m.run ? 2 : 0), r(m.x, 1), r(m.z, 1), r(m.h, 2), m.st | m.w << 2 | (m.sq ? m.sq.id : 0) << 3, m.sayT > S.t ? m.sayK : 0]) });   // last: what he calls out (SAY)
     }
   },
   /* the host left and I am next: every AI ghost becomes a live entity where it stands, with fresh ammunition and its place on the nearest road */
@@ -12429,7 +12490,7 @@ const Net = {
       g = g || Net.ghosts.get(m.from);
       const w = g && g.net && g.man && !g.dead && (m.k === 1 ? MAN.nade : m.k === 2 ? MAN.smk : g.arms[1] && g.arms[1].d.k === (m.k ? 'mort' : 'heat') && g.arms[1].d);
       if (w && m.k > 2 && Array.isArray(m.p) && Array.isArray(m.v)) mortRound(g, w, m.k === 4, m.p[0], m.p[1], m.p[2], m.v[0], m.v[1], m.v[2]);
-      else if (w && Array.isArray(m.p) && Array.isArray(m.v)) { lobbed(g, TOSS[m.k], w, m.p[0], m.p[1], m.p[2], m.v[0], m.v[1], m.v[2]); if (!m.k) fx.launch(false); }
+      else if (w && Array.isArray(m.p) && Array.isArray(m.v)) { if (m.rb && m.k === 1) nadeTaken(m.p[0], m.p[2]); const b = lobbed(g, TOSS[m.k], w, m.p[0], m.p[1], m.p[2], m.v[0], m.v[1], m.v[2]); if (m.f && m.k === 1) b.fz = S.t + (Number.isFinite(m.fl) ? clamp(m.fl, 0, GRN.fuse + 1) : GRN.fuse); if (!m.k) fx.launch(false); }
     },
     aitoss(m) { Net.rx.toss(m, Net.ai.get(m.id)); },
     ord(m) { Net.fireAs(Net.ghosts.get(m.from), m.i, m.target, m.m, m.tm); },
@@ -12462,6 +12523,7 @@ const Net = {
         const s = g.snap, dt = Math.max(.1, g.snapT ? S.t - g.snapT : .3);
         g.v = { x: clamp((e[5] - (g.lx === undefined ? e[5] : g.lx)) / dt, -7, 7), y: 0, z: clamp((e[6] - (g.lz === undefined ? e[6] : g.lz)) / dt, -7, 7) }; g.lx = e[5]; g.lz = e[6]; g.snapT = S.t;
         s.x = e[5]; s.z = e[6]; s.h = e[7]; s.age = 0; g.hp = e[3]; g.ctl.fire = !!(e[4] & 1); g.run = !!(e[4] & 2); g.st = e[8] & 3; g.w = g.arms[e[8] >> 2 & 1] ? e[8] >> 2 & 1 : 0; g.sid = e[8] >> 3;
+        if (Number.isInteger(e[9]) && e[9] > 0 && SAY.l[e[9] & 31]) { g.sayK = e[9]; g.sayT = S.t + SAY.life; }   // the host's soldier calls out (SAY)
       }
       else for (const e of m.e) {
         const [id, model, team, hp, f] = e, dead = !!(f & 4);
@@ -16414,7 +16476,13 @@ function fortPlan(t, sq) {
     if (k !== ks[0] && S.forts.some(f => f.k === ks[0] && f.prog < 1 && Math.abs(f.x - O.x) < A.post && Math.abs(f.z - O.z) < A.post)) continue;   // the second only once the first is up
     q.digT = S.t + A.again;
     if (!O.dig && !bmrPay(t, FORT.K[k].cost, 'dig')) continue;   // its own work within the side's budget (BMR); an ordered one was budgeted when it was given
-    for (const s of [0, 1, -1, 2, -2]) { const x = O.x + Math.cos(a) * (k === 2 && ks[0] === 1 ? R + 3 : R) + ux * s * 9, z = O.z - Math.sin(a) * (k === 2 && ks[0] === 1 ? R + 3 : R) + uz * s * 9; if (fortStart(k, t, x, z, a)) { if (k <= 2) n++; gLog(t, 'eng', 'Obra de campanha iniciada: ' + (k === 2 ? 'parapeito de sacos de areia' : k === 1 ? 'trincheira' : FORT.K[k].name.toLowerCase()), { x, z }, 'fort'); break; } }
+    let f = null;
+    for (const dr of O.dig ? CGN.dr : [0]) {   // an ordered work looks a little nearer and farther too before it gives up (CGN)
+      for (const s of [0, 1, -1, 2, -2]) { const D = (k === 2 && ks[0] === 1 ? R + 3 : R) + dr, x = O.x + Math.cos(a) * D + ux * s * 9, z = O.z - Math.sin(a) * D + uz * s * 9; if ((f = fortStart(k, t, x, z, a))) { if (k <= 2) n++; gLog(t, 'eng', 'Obra de campanha iniciada: ' + (k === 2 ? 'parapeito de sacos de areia' : k === 1 ? 'trincheira' : FORT.K[k].name.toLowerCase()), { x, z }, 'fort'); break; } }
+      if (f) break;
+    }
+    if (f) { O.wk = f; q.pts = null; }   // its men stand by the work until it is up (slot, CGN)
+    else if (O.dig && !cgnShort(t, FORT.K[k].cost) && (O.cgF = (O.cgF || 0) + 1) >= CGN.fail) cgnNoRoom(t, q, O);   // no room for it there, again and again: the order ends instead of holding the squad for ever
   }
 }
 /* a battery's list: each trench with enemy soldiers in it that have been spotted */
@@ -16520,7 +16588,15 @@ Object.assign(Net, { ft: false, fq: false, facc: 0,
    worth to a battery, and the m it costs a tank as a target */
 const CITY = { bay: 5, sh: 4.4, body: 2,
   gap: { 2: [.28, .72, .34, .8], 3: [.26, .74, 0, .77], 4: [.1, .9, 0, .85], 6: [.26, .74, 0, .77], hole: [.17, .83, 0, .7] },
-  mat: { plaster: { hp: 14 }, brick: { hp: 18 }, concrete: { hp: 24 }, stone: { hp: 28 }, metal: { hp: 10 } }, hp: { slab: 1.5, part: .5 },
+  /* mat: each material's hp, th the m of an outer wall's body (its outer face on the plan's line, the inner face th within: a round from
+     inside stops there, a soldier inside keeps off it) and pen what a round needs to go through it (bPow against bRes) */
+  mat: { plaster: { hp: 14, th: .3, pen: 1.3 }, brick: { hp: 18, th: .38, pen: 2.2 }, concrete: { hp: 24, th: .3, pen: 2.6 }, stone: { hp: 28, th: .55, pen: 3.2 }, metal: { hp: 10, th: .08, pen: .7 },
+    wood: { hp: 9, th: .12, pen: .6 } }, hp: { slab: 1.5, part: .5 },
+  /* going through: a round's power (bPow) is sa for a soldier's rifle or a light gun with no armour piercing, else gun[0] + gun[1] x its ap +
+     gun[2] x its damage over 5 (a .50 about 2 to 2.5, a 20 mm 4 or more, a 30 mm far more); a wall takes pen of it whole, crack of that cracked, a
+     slab slab times and a partition part times, and what is left goes on (its damage and speed by the share left), max walls at most.
+     shell: walls a tank's solid shot goes through; th: m of a slab; puff: the dust where it comes out */
+  pen: { sa: 1, gun: [1, 15, .25], crack: .6, slab: 1.4, part: .4, max: 3, shell: 2, th: .3 },
   dmg: { gun: 2, k: .34, r: .42, crack: .6, gone: .6, crash: [9, 160] },
   sup: { posts: 4, T: 1.5, step: .4, fall: .34 }, rub: [0, .9, 1.7, 2.6], fall: { on: 9, under: 34, near: 12, r: 3.5 },
   types: {
@@ -16528,7 +16604,7 @@ const CITY = { bay: 5, sh: 4.4, body: 2,
     row: { nx: [2, 3], nz: [2, 3], nl: [2, 3], bay: 4.8, roof: 'gable', mat: 'brick', win: .9 },
     block: { nx: [3, 6], nz: [2, 3], nl: [2, 4], roof: 'flat', mat: 'brick', win: .9 },
     hall: { nx: [5, 9], nz: [3, 4], nl: [1, 1], bay: 6, sh: 7.5, roof: 'gable', mat: 'metal', open: 1, gate: 1, win: .4 },
-    barn: { nx: [3, 4], nz: [2, 2], nl: [1, 1], bay: 5.5, sh: 6, roof: 'gable', mat: 'plaster', open: 1, gate: 1, ram: 1, shed: 1, win: .2 },
+    barn: { nx: [3, 4], nz: [2, 2], nl: [1, 1], bay: 5.5, sh: 6, roof: 'gable', mat: 'wood', open: 1, gate: 1, ram: 1, shed: 1, win: .2 },
     church: { nx: [4, 5], nz: [2, 2], nl: [1, 1], bay: 6, sh: 10, roof: 'gable', mat: 'stone', open: 1, win: .8 },
     tower: { nx: [2, 2], nz: [2, 2], nl: [7, 7], bay: 4.5, sh: 5, roof: 'spire', mat: 'stone', win: .5 },
     apart: { nx: [4, 7], nz: [3, 3], nl: [6, 10], roof: 'flat', mat: 'concrete', win: 1 },
@@ -16547,7 +16623,11 @@ const CITY = { bay: 5, sh: 4.4, body: 2,
     seat: { d: [1850, 3000], step: 50, clear: 150, base: 1300, cap: 100, nm: 'Sede',
       lots: [['fab', -2, 1, 0], ['pow', 2, -1, 0], ['fab', 3, 1, 0], ['pow', -3, -1, 0], ['pow', -1, -1, 1], ['aa', 0, -1, 0], ['dep', -2, -1, 1], ['aa', 1, -1, 1, 1]] } },
   stair: [.8, .6, 1.65, .5],
-  ai: { post: 60, near: 35, ring: 15, men: 6, stay: 25, shy: 8, clear: 45, nade: 6, enter: 2.2, art: 2, tank: 400, flee: 4 } };
+  ai: { post: 60, near: 35, ring: 15, men: 6, stay: 25, shy: 8, clear: 45, nade: 6, enter: 4.3, art: 2, tank: 400, flee: 4 },   // enter: after the grenade's fuse (GRN.fuse) has burnt
+  /* cover (bldCover): the places a building gives, for the soldier's own thinking to pick from. back: m behind an opening the place
+     inside is (its sill, CITY.gap, is what a crouched man is under and a standing one fires over); out: m before a wall the place outside
+     is; corner: m from a corner along the wall, where one leans out */
+  cov: { back: 1.1, out: .9, corner: 1.2 } };
 OBJ.bld = { hp: [100, 0], sight: 1, take: [1, 1, 1], ruin: { h: 2.2, slow: .5 }, fall: { r: 5, dmg: 26 }, veh: bldBump };
 GAI.art.val.bld = CITY.ai.art;
 
@@ -16780,6 +16860,7 @@ function bRay(o, ax, ay, az, dx, dy, dz, air) {
   }
   if (an >= 0 && ly + dy * t0 < -1e-6) return bHitAt(o, t0, an, an === 0 ? (vx > 0 ? -1 : 1) : an === 2 ? (vz > 0 ? -1 : 1) : -1, -1);   // the footing under its floor
   let t = t0, i = clamp(Math.floor((lx + vx * t) / bw), 0, nx - 1), j = clamp(Math.floor((lz + vz * t) / bd), 0, nz - 1), L = clamp(Math.floor((ly + dy * t) / sh), 0, nl - 1);
+  const th = B.mat.th, tin = (t, v) => Math.max(0, t - th / Math.abs(v));   // an outer wall met from inside: on its inner face, th short of the plan's line
   if (an === 0) { const e = (L * nz + j) * (nx + 1) + (vx > 0 ? 0 : nx); if (bStop(kd[e], st[off + e], (lz + vz * t) / bd - j, (ly + dy * t) / sh - L, air)) return bHitAt(o, t, 0, vx > 0 ? -1 : 1, e); }
   else if (an === 2) { const e = B.oZ + (L * (nz + 1) + (vz > 0 ? 0 : nz)) * nx + i; if (bStop(kd[e], st[off + e], (lx + vx * t) / bw - i, (ly + dy * t) / sh - L, air)) return bHitAt(o, t, 2, vz > 0 ? -1 : 1, e); }
   else if (an === 1) { const e = B.oS + ((nl - 1) * nz + j) * nx + i; if (kd[e] && st[off + e] < 2) return bHitAt(o, t, 1, 1, e); }
@@ -16790,11 +16871,11 @@ function bRay(o, ax, ay, az, dx, dy, dz, air) {
     t = tn;
     if (tx <= ty && tx <= tz) {
       const e = (L * nz + j) * (nx + 1) + (vx > 0 ? i + 1 : i);
-      if (bStop(kd[e], st[off + e], (lz + vz * t) / bd - j, (ly + dy * t) / sh - L, air)) return bHitAt(o, t, 0, vx > 0 ? -1 : 1, e);
+      if (bStop(kd[e], st[off + e], (lz + vz * t) / bd - j, (ly + dy * t) / sh - L, air)) return bHitAt(o, (vx > 0 ? i + 1 === nx : !i) ? tin(t, vx) : t, 0, vx > 0 ? -1 : 1, e);
       i += vx > 0 ? 1 : -1; if (i < 0 || i >= nx) return;
     } else if (tz <= ty) {
       const e = B.oZ + (L * (nz + 1) + (vz > 0 ? j + 1 : j)) * nx + i;
-      if (bStop(kd[e], st[off + e], (lx + vx * t) / bw - i, (ly + dy * t) / sh - L, air)) return bHitAt(o, t, 2, vz > 0 ? -1 : 1, e);
+      if (bStop(kd[e], st[off + e], (lx + vx * t) / bw - i, (ly + dy * t) / sh - L, air)) return bHitAt(o, (vz > 0 ? j + 1 === nz : !j) ? tin(t, vz) : t, 2, vz > 0 ? -1 : 1, e);
       j += vz > 0 ? 1 : -1; if (j < 0 || j >= nz) return;
     } else if (dy > 0) {
       const e = B.oS + (L * nz + j) * nx + i;
@@ -16816,6 +16897,25 @@ function bShot(o, b, dmg, x, y, z, vx, vy, vz) {
   OUT.x = x - vx / v * K; OUT.y = y - vy / v * K; OUT.z = z - vz / v * K;
   if (e >= 0 && (dmg > 0 || b.sa)) bDmg(o, e, dmg * (b.k || b.d ? 1 : CITY.dmg.gun), b.by, !!b.sa);
   return OUT;
+}
+/* what a round has to go through a wall with (CITY.pen), kept on it as it loses some at each wall */
+const bPow = b => b.pw !== undefined ? b.pw : (b.pw = b.sa ? CITY.pen.sa : CITY.pen.gun[0] + CITY.pen.gun[1] * (b.ap || 0) + CITY.pen.gun[2] * Math.max(0, (b.dmg || 0) - 5));
+/* what element e of a building takes of a round's power to be gone through: its material, what it is and its state */
+function bRes(o, e) { const B = o.B, P = CITY.pen, s = S.cbs[B.off + e]; return B.mat.pen * (e >= B.oS ? P.slab : B.kd[e] > 4 ? P.part : 1) * (s === 1 ? P.crack : s === 2 ? P.crack * .5 : 1); }
+/* a round that struck element e (on axis an, RAY.ax) comes out on its far side: past the wall's body, however slant it went in */
+function bOut(b, o, e, an) {
+  const v = Math.hypot(b.vx, b.vy, b.vz) || 1, nx = an === 0 ? o.c : an === 2 ? o.s : 0, ny = an === 1 ? 1 : 0, nz = an === 0 ? -o.s : an === 2 ? o.c : 0;
+  const cs = Math.max(.3, Math.abs(b.vx * nx + b.vy * ny + b.vz * nz) / v), d = ((e >= o.B.oS ? CITY.pen.th : o.B.mat.th) + .1) / cs;
+  b.x += b.vx / v * d; b.y += b.vy / v * d; b.z += b.vz / v * d; puff(b.x, b.y, b.z, 'dust', .7);
+}
+/* a bullet goes through the wall it struck when it has more power than the wall takes: what is left of it goes on, weaker and slower.
+   A rifle stops on masonry and goes through wood and sheet metal; a .50 through plaster and brick; a cannon through nearly anything */
+function bThru(b, o, e, an) {
+  const P = CITY.pen, p = bPow(b), r = bRes(o, e);
+  if (!(p > r) || (b.np | 0) >= P.max) return false;
+  const k = (p - r) / p, sl = .55 + .45 * k;
+  b.pw = p - r; b.np = (b.np | 0) + 1; b.dmg *= k; b.vx *= sl; b.vy *= sl; b.vz *= sl;
+  bOut(b, o, e, an); return true;
 }
 /* damage with no place of its own (an aircraft flying in): a burst where it struck */
 function bHit(o, dmg, by) {
@@ -16999,11 +17099,11 @@ function bldGhost(m, o, dt) {
   if (m.cbin) { m.y = m.cby += clamp(o.y + m.cbh - m.cby, -9 * dt, 9 * dt); if (m.cbh > 1) S.cbup++; } else m.cby = m.y;
 }
 function bldWalk(m, o, dt) {
-  const B = o.B, nx = B.nx, nz = B.nz, nl = B.nl, bw = B.bw, bd = B.bd, sh = B.sh, st = S.cbs, off = B.off, kd = B.kd, r = MAN.r * MAN.sc, SC = CITY.stair, W = 2 * o.hw, D = 2 * o.hd, F = CITY.fall;
+  const B = o.B, nx = B.nx, nz = B.nz, nl = B.nl, bw = B.bw, bd = B.bd, sh = B.sh, st = S.cbs, off = B.off, kd = B.kd, r = MAN.r * MAN.sc, SC = CITY.stair, W = 2 * o.hw, D = 2 * o.hd, F = CITY.fall, th = B.mat.th;
   const loc = (x, z) => { const px = x - o.x, pz = z - o.z; return [px * o.c - pz * o.s + o.hw, px * o.s + pz * o.c + o.hd]; };
   let [lx, lz] = loc(m.x, m.z), L = m.cbl | 0;
   const [qx, qz] = loc(m.cbpx, m.cbpz), x0 = lx, z0 = lz, flight = U => B.oS + ((U - 1) * nz + B.sz) * nx + B.sx;
-  if (L > 0) { lx = clamp(lx, r, W - r); lz = clamp(lz, r, D - r); }
+  if (L > 0) { lx = clamp(lx, r + th, W - r - th); lz = clamp(lz, r + th, D - r - th); }
   let ci = clamp(Math.floor(lx / bw), 0, nx - 1), cj = clamp(Math.floor(lz / bd), 0, nz - 1), inside = lx > 0 && lx < W && lz > 0 && lz < D;
   const well = B.st && inside && ci === B.sx && cj === B.sz;
   if (m.cbz && !well) {   // off the flight only where it meets a floor
@@ -17035,6 +17135,7 @@ function bldWalk(m, o, dt) {
     const hit = (e, ax, c0, w, a, ext) => {   // wall e on the line a of axis ax, from c0 on for w m
       const p = bPass(B, e, L, ext); if (p === 2) return;
       const g = p ? (st[off + e] === 2 ? CITY.gap.hole : CITY.gap[kd[e] === 2 ? 2 : kd[e]]) : null, u = ax ? lx : lz, v = ax ? lz : lx;
+      if (ext && (a < 1 ? v > 0 : v < a)) a = a < 1 ? th : a - th;   // an outer wall, from inside: its inner face
       for (let n = 0; n < (g ? 2 : 1); n++) {
         const s0 = c0 + (g && n ? g[1] * w : 0), s1 = c0 + (g && !n ? g[0] * w : w), cu = clamp(u, s0, s1), du = u - cu, dv = v - a, d = Math.hypot(du, dv);
         if (d >= r) continue;
@@ -17079,6 +17180,62 @@ function bldPts(t, x, z, n, R, k) {
   if (!out.length) return null;
   const pts = []; for (let i = 0; i < n; i++) pts.push(out[i % out.length]);
   return pts;
+}
+/* ---------- buildings: the cover they give ----------
+   For the soldier's own thinking (its perception and its choice of place): nothing here moves anybody. bldCover(o): every place a standing
+   building gives, kept on it until it changes (B.rev). Each place: x z where to stand, y its floor, l its storey, nx nz the outward normal
+   of its wall, in: inside the wall (the danger is to be outside, before it) or outside it (the danger beyond the building), k what it is,
+   h the m of cover over its floor, p what the wall stops (bRes over a rifle's power: 1 or more stops a rifle; .50s and cannon go through
+   more, CITY.pen), b the building, e the wall element (S.cbs[b.B.off + e]: its state; 3 gone). k:
+     'win'   inside a window or a hole: crouched under the sill (h) it is covered, standing it fires out (a hole to the floor has h 0);
+     'door'  inside a door or gate on the ground: fires out, no cover;
+     'blind' inside a wall with no opening: covered, fires at nothing;
+     'wall'  outside a stretch of wall on the ground: covered from beyond the building; with lx lz, at a corner, the way to lean out round it.
+   covBld(x, z, r, ex, ez, team): the places within r m of x z that cover from a danger at ex ez (a known enemy, the way he will come),
+   the best first: the wall between, a firing port before a blind wall, the stronger wall, the nearer; not a building team's enemies are in */
+function bldCover(o) {
+  const B = o.B;
+  if (B.cov && B.cov.rev === B.rev) return B.cov;
+  const out = (B.cov = []), nx = B.nx, nz = B.nz, C = CITY.cov, th = B.mat.th, W = nx * B.bw, D = nz * B.bd, ps = CITY.pen.sa; out.rev = B.rev;
+  if (S.os[o.id] > 1) return out;
+  const add = (e, L, j, i, ax, side, u) => {   // wall e of storey L, bay j i, on axis ax (0: x = side ? W : 0; 1: z = side ? D : 0), u m along it
+    const k = B.kd[e], s = S.cbs[B.off + e]; if (!k || s === 3) return;
+    const ln = side ? 1 : -1, wx = ax ? u : side ? W : 0, wz = ax ? (side ? D : 0) : u, n = ax ? { x: o.s * ln, z: o.c * ln } : { x: o.c * ln, z: -o.s * ln }, y = o.y + L * B.sh;
+    const at = d => bWorld(o, ax ? wx : wx - ln * d, 0, ax ? wz - ln * d : wz, {}), p = bRes(o, e) / ps;
+    const win = k === 2 || s === 2, door = !win && (k === 3 || k === 4);
+    if (bFloor(B, L, j, i) && !(B.st && i === B.sx && j === B.sz) && (!door || !L)) {   // inside it
+      const P = at(th + C.back), g = s === 2 ? CITY.gap.hole : CITY.gap[2];
+      out.push({ x: P.x, z: P.z, y, l: L, nx: n.x, nz: n.z, in: true, k: win ? 'win' : door ? 'door' : 'blind', h: win ? g[2] * B.sh : door ? 0 : B.sh, p, b: o, e });
+    }
+    if (!L && !door) {   // outside it, on the ground
+      const P = at(-C.out); if (bldAt(P.x, P.z, .3)) return;
+      out.push({ x: P.x, z: P.z, y: hgt(P.x, P.z), l: 0, nx: n.x, nz: n.z, in: false, k: 'wall', h: win ? CITY.gap[2][2] * B.sh : B.sh, p, b: o, e });
+    }
+  };
+  for (let L = 0; L < B.nl; L++) {
+    for (let j = 0; j < nz; j++) for (const sd of [0, 1]) add((L * nz + j) * (nx + 1) + sd * nx, L, j, sd * (nx - 1), 0, sd, (j + .5) * B.bd);
+    for (let i = 0; i < nx; i++) for (const sd of [0, 1]) add(B.oZ + (L * (nz + 1) + sd * nz) * nx + i, L, sd * (nz - 1), i, 1, sd, (i + .5) * B.bw);
+  }
+  for (const [ax, sd, a, b] of [[0, 0, 0, D], [0, 1, 0, D], [1, 0, 0, W], [1, 1, 0, W]]) for (const [u, dir] of [[a + C.corner, -1], [b - C.corner, 1]]) {   // the corners: lean out round them
+    const ln = sd ? 1 : -1, lx = ax ? u : sd ? W : 0, lz = ax ? (sd ? D : 0) : u, P = bWorld(o, ax ? lx : lx + ln * C.out, 0, ax ? lz + ln * C.out : lz, {}), e = ax ? B.oZ + sd * nz * nx + clamp(Math.floor(u / B.bw), 0, nx - 1) : clamp(Math.floor(u / B.bd), 0, nz - 1) * (nx + 1) + sd * nx;
+    if (!B.kd[e] || S.cbs[B.off + e] === 3 || bldAt(P.x, P.z, .3)) continue;
+    const n = ax ? { x: o.s * ln, z: o.c * ln } : { x: o.c * ln, z: -o.s * ln }, l = ax ? { x: o.c * dir, z: -o.s * dir } : { x: o.s * dir, z: o.c * dir };
+    out.push({ x: P.x, z: P.z, y: hgt(P.x, P.z), l: 0, nx: n.x, nz: n.z, in: false, k: 'wall', h: B.sh, p: bRes(o, e) / ps, b: o, e, lx: l.x, lz: l.z });
+  }
+  return out;
+}
+function covBld(x, z, r, ex, ez, team) {
+  const out = [];
+  for (const o of near(x, z, r + 30)) {
+    if (!o.B || S.os[o.id] > 1 || (team !== undefined && o.B.in.some((n, t) => n > 0 && t !== team))) continue;
+    for (const c of bldCover(o)) {
+      const d = Math.hypot(c.x - x, c.z - z); if (d > r) continue;
+      const fx = ex - c.x, fz = ez - c.z, f = (fx * c.nx + fz * c.nz) / (Math.hypot(fx, fz) || 1);
+      if (c.in ? f < .2 : f > -.2) continue;   // the danger must be before the wall (inside it) or beyond the building (outside it)
+      out.push({ c, s: Math.abs(f) * Math.min(1.5, c.p) * (c.k === 'win' ? 1.25 : c.k === 'door' ? .5 : 1) - d / r * .5 });
+    }
+  }
+  return out.sort((a, b) => b.s - a.s).map(q => q.c);
 }
 /* the ways into a building from the street: every opening of its ground storey, with the point before it and the one behind it */
 function bldEnts(o) {
@@ -18215,7 +18372,7 @@ function manRides(C) {
    wave (push: the assaults keep it), and the line's posts (line, wood), which stand nearest the enemy: a manoeuvre is mostly the work of the troops at the front (the
    others are kilometres back), and its op gives the squad back to its post when it ends (opFree) */
 const MANJ = { held: 1, road: 1, line: 1, wood: 1 };
-const manFree = sq => sq.filter(q => !q.op && MANJ[q.job] && q.live >= 3 && !q.lift && !q.ord.b && !q.ord.T && !q.ord.tw && q.ord.k !== 'withdraw');
+const manFree = sq => sq.filter(q => !q.op && MANJ[q.job] && q.live >= 3 && !q.lift && !q.ord.b && !q.ord.T && !q.ord.tw && q.ord.k !== 'withdraw' && q.ord.k !== 'build');   // nor a squad on its way to build a supply base (CGN)
 /* the men of a squad still standing, counted now (q.live is brought up to date by the squad's own think, half a second late): every kind measures its losses by it */
 const manLive = q => q.men.reduce((a, m) => a + (m.dead ? 0 : 1), 0);
 /* 'Flanqueio encerrado', 'Finta encerrada': the generic words of an op's end agree with the kind's name */
@@ -19405,7 +19562,7 @@ function cmdPosts(C, sq, have) {
   { const n = postN('push', FIELD.posts.find(p => p[0] === 'push')[1]); P.push(['push', C.pn && C.pn.push !== undefined ? C.pn.push : Math.max(n, C.want ? C.want.n : 0, D.push - 1)]); }   // the assault squads before every other post but a threatened town's (cf-manobra-fix: last in the list, they never came, and the side had no squad free to attack)
   for (const b of S.sup) {   // a guard for each base, two for one the enemy is near
     if (b.team !== t || b.dead || (S.net && !Net.sb)) continue;
-    let n = sq.reduce((a, q) => a + (q.ord.b === b ? 1 : 0), 0); const want = cmdKnown(C, b.x, b.z, 900) > 2 ? 2 : 1;
+    let n = sq.reduce((a, q) => a + (q.ord.b === b && q.job === 'guard' ? 1 : 0), 0); const want = cmdKnown(C, b.x, b.z, 900) > 2 ? 2 : 1;   // the builders are not its guards: they go back to their work once it is up (CGN)
     for (let i = 0; i < 2 && n < want; i++) { const k = b.id * 2 + i; if (!G.includes(k)) P.push(['guard', 1, k]); if (!sq.some(q => q.job === 'guard' && q.jk === k && q.ord.b === b)) n++; }
   }
   for (const e of S.eco ? S.eco.l : []) {   // a guard for each site the economy's def command asks one for
@@ -28770,9 +28927,10 @@ function afpBuilder(t, x, z, mine) {
   let best = null, bd = AFP.reach;
   for (const q of S.squads) {
     if (q.team !== t || q.net || !(q.live >= W21.live) || q.state || q.op || q.lift || q.rd || q.qrf || q.sapT || q.dome || (q.aidP && !q.aidP.gone && q.aidP.prog < 1) || aidRide(q)) continue;
-    const pen = mine && q.job === 'sap' ? 0 : AFP.by[q.job]; if (pen === undefined || (q.job === 'sap' && !mine)) continue;
-    const O = q.ord, L = gLead(q); if (!O || !L || O.k === 'supply' || O.k === 'build' || O.b || O.T || O.tw) continue;
-    const d = hdist(L, { x, z }) + pen; if (d < bd) { bd = d; best = q; }
+    const pen = q.job === 'sap' ? (mine ? 0 : CGN.sap) : AFP.by[q.job]; if (pen === undefined) continue;   // the sappers build a post too, after the engineers (CGN)
+    const O = q.ord, L = gLead(q); if (!O || !L || O.k === 'supply' || O.k === 'build' || O.b || O.T) continue;
+    const dd = hdist(L, { x, z }); if (O.tw && (dd > CGN.tw || q.fd < CGN.twq)) continue;   // a garrison or a squad holding a point builds only near its post, with no enemy near (CGN: AFP.by.garr was never reached)
+    const d = dd + pen; if (d < bd) { bd = d; best = q; }
   }
   return best;
 }
@@ -28799,7 +28957,7 @@ function afpTry(C, A, it) {
   const mw = q.mis ? q.mis.why : undefined, r = genCmd(t, { c: 'fort', k: it.k, x: sp.x, z: sp.z, a: it.a, ids: [q.id], why: 'plano de fortificação: ' + it.why }, 'ai');
   if (!r.ok) return no('recusado, ' + gNo(r.why).toLowerCase());
   const op = C.ops.find(o => o.k === 'usr' && o.id === r.id) || null;
-  A.fo.push({ op, key: it.key, k: it.k, x: sp.x, z: sp.z, cx: it.cx, cz: it.cz, T0: S.t, q, mw, it });
+  A.fo.push({ op, key: it.key, k: it.k, x: sp.x, z: sp.z, cx: it.cx, cz: it.cz, T0: S.t, q, mw, it, Tm: AFP.T + hdist(gLead(q), sp) * CGN.walkK });   // the walk there on top of the work's time (CGN)
   if (A.save && A.save.key === it.key) A.save = null;
   afpSay(C, A, it, 1, 'ordenado (' + (GEN.job[q.job] || q.job).toLowerCase() + ' a ' + Math.round(hdist(gLead(q), sp)) + ' m)');
   return true;
@@ -28810,7 +28968,7 @@ function afpKeep(C, A) {
   for (const o of A.fo.slice()) {
     const op = o.op, at = { k: o.k, x: o.x, z: o.z, cx: o.cx, cz: o.cz }, has = afpHas(t, at), K = W21.dig[o.k];
     const up = has && (!K || S.forts.some(f => f.team === t && f.k === K && !f.gone && f.prog >= 1 && Math.hypot(f.x - o.x, f.z - o.z) < AFP.near));
-    const end = !op || op.over ? 'sem construtores' : up && (K || !op.bk) ? 'done' : !K && !op.bk ? 'não foi possível' : S.t - o.T0 > AFP.T ? 'tempo esgotado' : '';
+    const end = !op || op.over ? 'sem construtores' : up && (K || !op.bk) ? 'done' : !K && !op.bk ? 'não foi possível' : S.t - o.T0 > (o.Tm || AFP.T) ? 'tempo esgotado' : '';
     if (!end) continue;
     if (op && !op.over) opEnd(C, op);
     if (o.q && o.q.mis && o.mw !== undefined && o.q.live > 0 && !o.q.op) o.q.mis.why = o.mw;
@@ -29009,6 +29167,85 @@ function bmrHud(t, R, y, u, ink) {
   txt('METAL ' + n(d.mt) + '  +' + n(inc.mt) + ' −' + n(use.mt + s.mt) + '/min', R, y, 12.5 * u, d.mt < 60 ? FOE : ink, 'right'); y += 15 * u;
   txt((w.crates >= 0 ? 'CAIXAS ' + w.crates + ' · ' : '') + 'OBRAS −' + n(s.en) + ' E −' + n(s.mt) + ' M/min', R, y, 11 * u, ink, 'right'); y += 15 * u;
   return y;
+}
+/* ---------- the general's builders (CGN, não testado): why the AI's works were ordered and never built, and the fixes ----------
+   What went wrong (read in the code, cf-construir-general):
+   - a squad sent to build stood in the houses or the trenches near the place (postPts: windows within R + CITY.ai.near m, a finished work
+     within FORT.ai.post m, the perimeter of the end of its walk), not by the work: the leader could stay over 30 m from the place, so the
+     work never began, or only the men who happened to stand near it built and it decayed. Now a squad at its place with a work to build
+     (cgnWork: the supply base of its build order, the work fortPlan began for its order (O.wk), its own post (q.aidP), or the place of an
+     ordered work not begun yet) stands by it (cgnPts, from slot): along the side of the work away from the enemy, every man in reach;
+   - the squad that built a supply base stayed its guard for good (planSup gave it the hold with O.b, and cmdPosts counted it as the base's
+     guard, so no guard came): the side's one engineer squad built one base and no other, and the plan's builder (afpBuilder skips O.b)
+     lost it too. Now only guard squads count as guards, a guard comes while the site is up, and the builders go back to their own work
+     (cgnHome) once it is up and guarded, the engineers after rel s anyway;
+   - a new supply site needed a free squad on its own road within BLD.ai.fall m of it (aiSite picks the place first): with none there the
+     side never built again. Now the builder may come from any road it can walk from (as setOrd moves it: the same road, a switch, a trip
+     of the network or near a road's end), within reach m, the kit first, the engineers next, the nearest (cgnSupBy); with none, it looks
+     again after look s;
+   - a squad that never reached its site (halted, lost its way) held up every new site (planSup waits while one build order is open). Now
+     a build order not begun after walk s is given up;
+   - a manoeuvre could take a squad on its way to build (manFree), and planSup could take a squad of an operation (free took any op but
+     the person's);
+   - the fortification plan's builder skipped every squad with a town or a point (O.tw), so its garrisons (AFP.by.garr) were never
+     picked, nor the sappers for anything but a minefield: "nenhuma esquadra livre". Now a squad holding a town or a point builds within
+     tw m of its post with no enemy within twq m, and the sappers build after the engineers (sap, their weight);
+   - an order was given up after AFP.T s even when the builder had kilometres to walk: now AFP.T plus walkK s a m of the walk;
+   - an ordered work with no room where it was asked for kept its squad holding there for ever: it now also looks dr m nearer and farther,
+     and after fail tries (not for want of money) the order ends (cgnNoRoom).
+   No random number is drawn here */
+const CGN = { rel: 90, look: 15, walk: 600, reach: 3000, tw: 600, twq: 600, sap: 300, walkK: .45, dr: [0, 6, -3, 12], fail: 3, row: [1.3, 2.9] };
+/* what a squad at its place builds (null: nothing, it stands as it would) */
+function cgnWork(q, O) {
+  if (O.k === 'build') return O.b ? (O.b.dead || O.b.prog >= 1 ? null : O.b) : O.x !== undefined ? O : null;
+  if (O.k !== 'hold' && O.k !== 'move') return null;
+  const w = O.wk; if (w) return w.gone || w.prog >= 1 ? null : w;
+  if (O.dig && O.x !== undefined) return O;   // an ordered work not begun yet: around its place, so that the leader is there
+  const P = q.aidP; return P && !P.gone && P.prog < 1 ? P : null;
+}
+/* the men's places by it: a work or a base along its side away from the enemy, in two rows; a place not built on yet, a ring round it */
+function cgnPts(q, w) {
+  const c = q.cgP; if (c && c.w === w && c.n === q.n0) return c.p;
+  const n = Math.max(q.n0, 1), p = [], o = w.o;
+  if (!o) { const r = w.k === 'build' ? 9 : 6; for (let i = 0; i < n; i++) { const a = i * TAU / n; p.push(clearOf(w.x + Math.cos(a) * r, w.z + Math.sin(a) * r, 1, {})); } }
+  else {
+    const e = mnBase(q.team, o.x, o.z), back = (e.x - o.x) * o.s + (e.z - o.z) * o.c > 0 ? -1 : 1, m = Math.ceil(n / 2), hw = Math.max(o.hw, 1.5);
+    for (let i = 0; i < n; i++) {
+      const row = i % 2, j = i >> 1, lx = ((j + .5) / m - .5) * 2 * hw, lz = back * (o.hd + CGN.row[row]);
+      p.push(clearOf(o.x + lx * o.c + lz * o.s, o.z - lx * o.s + lz * o.c, 1, {}));
+    }
+  }
+  q.cgP = { w, n: q.n0, p }; return p;
+}
+/* a builder's own work again: the engineers back to their place behind the front road's line, any other its job's post, else a hold where it is */
+function cgnHome(t, q) {
+  const R = S.T.routes, L = q.men.find(m => !m.dead); let O = null;
+  if (q.job === 'eng') { const fr = frontR(t), r = R[fr], s = clamp(lineS(t, fr) - dsOf(t, fr) * BLD.ai.back, 0, r.len), p = routeAt(r, s); O = { k: 'hold', ri: fr, s, x: p.x - p.dz * 34, z: p.z + p.dx * 34 }; }
+  else if (FIELD.posts.some(p => p[0] === q.job) && q.job !== 'amb') O = post(t, q.job, q.jk);
+  if (!O || O.b || O.k === 'build') O = L ? { k: 'hold', ri: q.ri, s: q.s, x: L.x, z: L.z } : { k: 'hold', ri: q.ri, s: q.s };
+  setOrd(q, O);
+}
+/* can a squad get to O as setOrd moves it (pushFrom's rule): on that road, by a switch, by a walk of the network, or near a road's end */
+function cgnGo(q, O) {
+  const R = S.T.routes, e = Math.min(q.s, R[q.ri].len - q.s);
+  return O.ri === q.ri || (S.T.mv >= 4 && (!!swNear(q.ri, q.s, O.ri) || !!tripSq(q, O))) || e < 2000;
+}
+/* the builder of a new supply site O: free (planSup's), quiet, within reach; the kit first, the engineers next, the nearest. The walk is
+   looked for in the first few only */
+function cgnSupBy(sq, O, free) {
+  const A = BLD.ai, d = q => { const L = q.men.find(m => !m.dead); return L ? hdist(L, O) : 1e9; };
+  const l = sq.filter(q => free(q) && q.fd > BMR.sup.quiet && (q.ri === O.ri ? Math.abs(q.s - O.s) < A.fall : d(q) < CGN.reach));
+  l.sort((x, y) => bmrKitOf(y) - bmrKitOf(x) || (x.job === 'eng' ? 0 : 1) - (y.job === 'eng' ? 0 : 1) || d(x) - d(y));
+  for (const q of l.slice(0, 4)) if (cgnGo(q, O)) return q;
+  return null;
+}
+/* is side t short of c now (a work that cannot begin for want of money is not a place without room) */
+const cgnShort = (t, c) => !!c && ecoSim() && !!S.eco.d[t] && (S.eco.d[t].en < c[0] || S.eco.d[t].mt < c[1]);
+/* an ordered work with no room where it was asked for: the order ends (the plan's op ends, and its builder goes back) */
+function cgnNoRoom(t, q, O) {
+  gLog(t, 'eng', 'Obra ordenada sem lugar livre ' + ecoNear(O.x, O.z) + ': ' + sqName(q) + ' desiste', { x: O.x, z: O.z }, 'cgnr' + q.id);
+  if (q.op && q.op.k === 'usr' && !q.op.over) return opEnd(cmdOf(t), q.op);
+  const o = Object.assign({}, O); delete o.dig; delete o.wk; setOrd(q, o);
 }
 /* ---------- M8 of the general's manoeuvre: the operation-level strategies (the captain's 22, cf-estrategias), above the procedures (M3) ----------
    Every STG.every s of plan (stgTick, from cmdSense), a side whose AI holds the attack or the defence weighs the 22 strategies from what it knows (stgSit:
@@ -31166,6 +31403,164 @@ function shelters(o, r, opt) {
   return out.slice(0, opt.max || COVR.max);
 }
 /* ===== end of the trench corridors, tunnels and shelters ===== */
+/* ---------- the soldier's body and voice (cf-cerebro-soldado, part 1: what does not depend on how the soldier decides) ----------
+   Seen in Defilade (docs/nao-testado/cf-cerebro-soldado.md) and asked by the captain: grenades that behave as grenades, cover read from
+   the ground itself, a blast that throws a man and leaves him reeling, and soldiers that talk (balloons over their heads). How a soldier
+   chooses what to do with these (throw a grenade back, crawl, surrender, take a fallen mate's weapon, call contacts) waits for the
+   architecture of his mind (the research cf-cerebro-pesquisa); the pieces here are what that mind will call.
+   NADE, on top of the hand grenade's fuse, bounce and roll (GRN, nadeStep, cf-casas-paredes): it falls to the floor of a trench it lands
+   in (nadeFloor). A grenade kept in hand cooks: m.nCook s come off its fuse. An AI soldier who has a point to throw at (m.nAt, set before
+   c.nade) throws so as to land on it, at speed MAN.nade.spd, low (a window, a door) or high (over cover, into a trench) with err of the
+   distance off; on open ground short of it by short of the distance (shortMax m at most), for the bounce and the roll. Its blast, under fold m of radius, is cut to foldK by a fold of the ground between it and a man (the walls already cut it,
+   OBJS.shield; a trench, fortHit). Online the owner sends the fuse it has left (toss fl) and a grenade thrown back (rb), whose first copy
+   each client takes off (nadeTaken, taken m round where it was picked up) */
+const NADE = { fold: 16, foldK: .35, err: .06, taken: 3, short: .3, shortMax: 6 };
+/* where a grenade lies at x z: the ground, or the floor of a trench it fell into (GRN's nadeStep asks it) */
+function nadeFloor(x, z) { const g = hgt(x, z), f = typeof trenchAt === 'function' ? trenchAt(x, z, .2) : null; return f ? g - FORT.trench.depth * f.prog : g; }
+/* the AI's grenades and smoke are called out (SAY) */
+lobbed = (f => (m, k, o, x, y, z, vx, vy, vz) => {
+  const b = f(m, k, o, x, y, z, vx, vy, vz);
+  if (m.ai && !m.net && (k === 'nade' || k === 'smk')) say(m, k === 'nade' ? SAYC.frag : SAYC.smk);
+  return b;
+})(lobbed);
+/* the line to throw along to land at P from e, at speed v: low or high; null out of reach */
+function nadeAim(e, P, v, hi) {
+  const dx = P.x - e.x, dz = P.z - e.z, d = Math.hypot(dx, dz) || .1, hy = P.y - e.y, v2 = v * v, q = v2 * v2 - GR * (GR * d * d + 2 * hy * v2);
+  if (q < 0) return null;
+  const a = Math.atan((v2 + (hi ? 1 : -1) * Math.sqrt(q)) / (GR * d)), c = Math.cos(a);
+  return { x: dx / d * c, y: Math.sin(a), z: dz / d * c };
+}
+/* an AI soldier with a point to throw at (m.nAt: x y z, hi, t) throws a hand grenade to land on it, a little off; the rest throw along their aim */
+toss = (f => (m, k) => {
+  const P = k === 1 && m.ai && m.nAt && S.t - m.nAt.t < 3 ? m.nAt : null; m.nAt = null;
+  if (!P) return f(m, k);
+  const e = manEye(m), d = Math.hypot(P.x - e.x, P.z - e.z), r = d * NADE.err, a = rand(0, TAU), sh = P.hi || P.win ? 0 : Math.min(NADE.shortMax, d * NADE.short) / (d || 1);   // on open ground short of it, for the bounce and the roll
+  const Q = { x: P.x - (P.x - e.x) * sh + Math.cos(a) * r * Math.random(), y: P.y, z: P.z - (P.z - e.z) * sh + Math.sin(a) * r * Math.random() };
+  const D = nadeAim(e, Q, MAN.nade.spd, P.hi) || nadeAim(e, Q, MAN.nade.spd, !P.hi); if (!D) return f(m, k);
+  const f0 = m.f; m.f = { x: D.x, y: D.y - .45, z: D.z }; m.h = Math.atan2(-D.z, D.x);   // toss lifts the aim by .45: what goes in comes out as D
+  try { return f(m, k); } finally { m.f = f0; manDir(m); }
+})(toss);
+/* the point a soldier throws at to reach t: a man in a building through the nearest opening of its floor, one in a trench into it (high),
+   any other one at his feet; and a building with nobody known in it through the opening nearest to m */
+function nadeAt(m, t) {
+  const B = t && (t.B ? t : t.cbin && t.cbo ? t.cbo : null);
+  if (B && B.B && S.os[B.id] < 2) {
+    const L = t.B ? 0 : t.cbl | 0, w = bldWins(B, m.x - B.x, m.z - B.z).filter(p => p.l === L).sort((a, c) => hdist(a, m) - hdist(c, m))[0];
+    if (w) return { x: w.x, y: B.y + L * B.B.sh + 1.1, z: w.z, hi: false, win: true, t: S.t };
+  }
+  if (!t) return null;
+  return { x: t.x, y: (t.fc ? nadeFloor(t.x, t.z) : hgt(t.x, t.z)) + .1, z: t.z, hi: !!t.fc || (t.man && cover(t).p > 0), t: S.t };
+}
+/* a grenade picked up and thrown back by m at P (nadeAt's): the one on the ground is gone, the new one keeps what was left of its fuse */
+function nadeBack(m, b, P) {
+  if (!b || b.gone || b.fz === undefined) return null;
+  const left = b.fz - S.t; b.gone = true;
+  m.nades++; m.ncool = 0; m.nCook = GRN.fuse - left; m.nRb = 1; m.nAt = P ? Object.assign({}, P, { t: S.t }) : null;
+  const n = toss(m, 1); m.ncool = S.t + MAN.nade.cool; if (!n) { m.nades--; m.nCook = 0; m.nRb = 0; }
+  return n;
+}
+/* online: a grenade thrown back: the copy of the first one lying where it was picked up goes */
+function nadeTaken(x, z) { for (const b of S.bombs) if (b.k === 'nade' && !b.gone && Math.abs(b.x - x) < NADE.taken && Math.abs(b.z - z) < NADE.taken) b.gone = true; }
+/* how much of a small blast at x y z (radius r) reaches m past the ground: a fold between them cuts it to foldK */
+function nadeFold(x, y, z, r, m) {
+  if (r > NADE.fold || m.in) return 1;
+  const by = bodyY(m), y0 = y + .2;
+  for (let i = 1; i < 6; i++) { const k = i / 6, px = x + (m.x - x) * k, pz = z + (m.z - z) * k; if (y0 + (by - y0) * k < hgt(px, pz) + .05) return NADE.foldK; }
+  return 1;
+}
+/* CVR, cover read from the ground (no cover points marked anywhere): the best place within r m of m against an enemy at e (a point, or
+   null when the fire comes from nowhere known), as data for whatever decides to go there. Each place is scored by what stands between it
+   and e: the line from e cut by the ground, a wall or the woods (los) cut; what the ground there gives (coverAt: a wall or rubble on e's
+   side, a wood, a bush) prot; the bay of a standing building bay; the lee of a still vehicle or a hulk veh; a place in a trench of m's
+   side tr, behind its sandbags bag; the lee of a rock or a trunk rock; the bld best places the houses give against e (covBld,
+   cf-casas-paredes: outside a wall, wall; inside a window, bay); less the way to go (far of r), less a mate's place within gap m.
+   It reads: the ring round m, the buildings (covBld, drBldOk), the vehicles, the works, the rocks and trunks, the woods; the trenches as
+   corridors (cf-trincheiras-tuneis) are to come through the same fortSlots and trenchAt. Returns { x, z, b (a bay), sc, why } */
+const CVR = { cut: 2, prot: 1.4, back: .3, bay: 1.8, wall: 1.5, bld: 6, veh: 1.6, tr: 2.2, bag: 1.3, rock: .6, far: .9, gap: 2.5, eye: 1.8, body: 1 };
+function cvPick(m, e, r, used) {
+  const C = CVR, ey = e ? hgt(e.x, e.z) + C.eye : 0; let best = null;
+  const tryAt = (x, z, k, why, b) => {
+    if (hgt(x, z) < S.T.WL + .5) return;
+    const dm = Math.hypot(x - m.x, z - m.z); if (dm > r * 1.3) return;
+    if (used) for (const u of used) if (Math.abs(u.x - x) < C.gap && Math.abs(u.z - z) < C.gap) return;
+    coverAt(x, z, CV);
+    const side = !e || CV.all || (e.x - x) * CV.x + (e.z - z) * CV.z > 0, cut = !!e && !los(e, ey, { x, z }, hgt(x, z) + C.body);
+    const sc = (cut ? C.cut : 0) + (CV.p || (CV.b ? COVER.bush[2] : 0)) * (side ? C.prot : C.back) + k - dm / r * C.far;
+    if (!best || sc > best.sc) best = { x, z, b: b || undefined, sc, why: cut && !k ? 'dobra' : why };
+  };
+  const ux = e ? m.x - e.x : 0, uz = e ? m.z - e.z : 0, ul = Math.hypot(ux, uz) || 1, lee = (o, R) => (e ? { x: o.x + (o.x - e.x) / (Math.hypot(o.x - e.x, o.z - e.z) || 1) * R, z: o.z + (o.z - e.z) / (Math.hypot(o.x - e.x, o.z - e.z) || 1) * R } : { x: o.x + ux / ul * R, z: o.z + uz / ul * R });
+  tryAt(m.x, m.z, 0, 'aqui');
+  for (let i = 0; i < 16; i++) { const a = i * TAU / 8 + (i > 7 ? .4 : 0), R = i > 7 ? r : r * .5; tryAt(m.x + Math.cos(a) * R, m.z + Math.sin(a) * R, 0, 'chao'); }
+  if (e && typeof covBld === 'function') for (const c of covBld(m.x, m.z, r, e.x, e.z, m.team).slice(0, C.bld)) if (!c.l && c.k !== 'door') tryAt(c.x, c.z, c.k === 'wall' ? C.wall : C.bay, c.k === 'wall' ? 'parede' : 'janela', c.in ? { x: c.x, z: c.z, b: c.b, l: 0 } : null);   // the walls and windows of the houses (covBld, cf-casas-paredes): the ground storey
+  for (const o of near(m.x, m.z, r)) {
+    if (drBldOk(o)) { for (const p of bldBays(o, m.x, m.z).slice(0, 2)) tryAt(p.x, p.z, C.bay, 'predio', p); continue; }
+    if (S.os[o.id] < 2 && (o.K.rock || (o.K.sight && o.rd))) { const p = lee(o, (o.rd || 1) + 1.1); tryAt(p.x, p.z, C.rock, 'rocha'); }
+  }
+  for (const u of S.units) if (!u.dead && !u.def.vmax && Math.abs(u.x - m.x) < r && Math.abs(u.z - m.z) < r && Math.hypot(u.v.x, u.v.z) < 1) { const p = lee(u, Math.max(u.def.l || 5, u.def.w || 3) / 2 + 1.2); tryAt(p.x, p.z, C.veh, 'veiculo'); }
+  for (const f of S.forts) if (f.prog >= 1 && f.team === m.team && (f.k === 1 || f.k === 2) && Math.abs(f.x - m.x) < r && Math.abs(f.z - m.z) < r) for (const p of fortSlots(f)) if (!p.by || p.by === m || p.by.dead) tryAt(p.x, p.z, f.k === 1 ? C.tr : C.bag, f.k === 1 ? 'trincheira' : 'sacos');
+  if (best && !best.b) { const c = clearOf(best.x, best.z, 1, {}); best.x = c.x; best.z = c.z; }
+  return best || { x: m.x, z: m.z, sc: 0, why: 'aqui' };
+}
+/* SAY, what soldiers call out: a balloon over the head for life s, one call every gap s at most (a forced one cuts in), seen within r m
+   (an enemy's only while he is made out). A call is a code (SAYC) and, for some, an argument (a clock hour, 1 to 12); online the host's
+   soldiers carry it in their rows (code + 32 * argument), so a guest sees the host's calls and nothing else */
+const SAY = { life: 2.4, gap: 2.5, r: 140,
+  l: [null, a => (a ? 'Contato às ' + a + (a === 1 ? ' hora!' : ' horas!') : 'Contato!'), () => 'Granada!', () => 'Lá vai granada!', () => 'Médico!', () => 'Homem ferido!', () => 'Vou buscá-lo!',
+    () => 'Eu me rendo!', () => 'Mãos ao alto!', () => 'Drone!', () => 'Peguei a arma dele!', () => 'Fumaça!', () => 'Ao chão!', a => (a ? 'Blindado às ' + a + (a === 1 ? ' hora!' : ' horas!') : 'Blindado!'),
+    () => 'Avançar!', () => 'Recuar!', () => 'Cobrindo!', () => 'Fogo de longe!', () => 'Artilharia!', () => 'Aeronave!', () => 'Mina!', () => 'Atirador!', () => 'Emboscada!', () => 'Sem munição!',
+    () => 'Cessar fogo, são amigos!', () => 'O prédio vai cair, saiam!', () => 'Perímetro!', () => 'Por lances!', () => 'Fixar e flanquear!'] };
+const SAYC = { con: 1, nade: 2, frag: 3, med: 4, hurt: 5, fetch: 6, sur: 7, hands: 8, drone: 9, pick: 10, smk: 11, down: 12, armor: 13, adv: 14, back: 15, cover: 16, far: 17, arty: 18, air: 19, mine: 20, snp: 21, amb: 22, ammo: 23, ff: 24, bld: 25, per: 26, bound: 27, fix: 28 };
+function say(m, k, a, force) {
+  if (!m || m.dead || m.net || !k || (!force && S.t < (m.sayN || 0))) return;
+  m.sayK = k + 32 * clamp(a | 0, 0, 12); m.sayT = S.t + SAY.life; m.sayN = S.t + SAY.gap;
+}
+const sayText = m => { const k = m.sayK & 31, f = SAY.l[k]; return f ? f(m.sayK >> 5) : ''; };
+/* the clock hour of x z from m's facing (12 ahead, 3 on his right) */
+const sayClock = (m, x, z) => { const a = wrap(Math.atan2(-(z - m.z), x - m.x) - m.h); return ((Math.round(-a / (TAU / 12)) % 12) + 12) % 12 || 12; };
+/* the squads' drills already chosen say what they are (their leader calls it) */
+const SAYDR = { tanque: 'armor', anticarro: 'armor', artilharia: 'arty', predio: 'bld', contato: 'down', 'fogo-distante': 'far', emboscada: 'amb', 'emboscada-dist': 'amb', atirador: 'snp', aereo: 'air',
+  mina: 'mine', lances: 'bound', municao: 'ammo', recuo: 'back', romper: 'back', fumaca: 'smk', perimetro: 'per', 'fogo-amigo': 'ff', fixar: 'fix' };
+drRun = (f => (o, p) => {
+  const was = o.dr && o.dr.id; f(o, p);
+  if (o.men && o.dr && o.dr.id !== was && SAYDR[o.dr.id]) { const L = o.men.find(m => !m.dead && !m.down && m.ai); if (L) say(L, SAYC[SAYDR[o.dr.id]], 0, true); }
+})(drRun);
+/* a man who goes down calls for the medic, and the mate who goes for him says so (WND and its rescue: what they already do) */
+manDown = (f => (m, dmg, h) => { const r = f(m, dmg, h); if (r) { say(m, SAYC.med, 0, true); m.rsay = 0; } return r; })(manDown);
+sqRescue = (f => (q, live) => { f(q, live); for (const d of q.men) if (d.down && !d.dead && d.resc && !d.rsay && d.resc.ai && d.resc.ai.rsc === d) { d.rsay = 1; say(d.resc, SAYC.fetch, 0, true); } })(sqRescue);
+/* STUN, what a blast does to a man's body beyond its damage: within r of its radius (more the nearer and the bigger, k of it at least
+   to count), he is thrown push m away from it (less lying down, not in a trench, never through a wall) and reels for t s at most: an AI
+   soldier's aim spreads by sp, he does not fire in the first hold of it, and does not run. Each client throws only the men it moves (its
+   own player and, on the host, the AI's) */
+const STUN = { r: 1.6, k: .15, push: 2.2, t: 3.5, sp: .05, hold: .4, prone: .3 };
+explode = (f => (x, y, z, r, dmg, by, team, he, ob) => {
+  f(x, y, z, r, dmg, by, team, he, ob);
+  const R = r * STUN.r, w = Math.min(1, dmg / MAN.nade.dmg);
+  for (const m of S.men) {
+    if (m.dead || m.in || m.net || !(m.ai || m === S.my) || Math.abs(m.x - x) > R || Math.abs(m.z - z) > R) continue;
+    const d = Math.hypot(m.x - x, m.y - y, m.z - z); if (d >= R) continue;
+    const k = (1 - d / R) * w * nadeFold(x, y, z, r, m); if (k < STUN.k) continue;
+    m.stun = Math.max(m.stun || 0, S.t + STUN.t * k); m.stunT = STUN.t * k;
+    if (m.dg > 0) continue;
+    const hd = Math.hypot(m.x - x, m.z - z) || 1, L = STUN.push * k * (m.st === 2 ? STUN.prone : 1), nx = m.x + (m.x - x) / hd * L, nz = m.z + (m.z - z) / hd * L, hy = m.y + 1;
+    if (hgt(nx, nz) > S.T.WL + .2 && !walled(m.x, hy, m.z, nx, hy, nz)) { m.x = nx; m.z = nz; m.y = manY(nx, nz); }
+  }
+})(explode);
+aiMan = (g => (m, dt) => {
+  g(m, dt);
+  if (m.ctl.nade === 1 && !m.nAt && !m.down && !m.dead) { const q = m.sq, b = q && ((q.bd && q.bd.b) || q.rc); m.nAt = nadeAt(m, b && S.os[b.id] < 2 && hdist(b, m) < IAI.nade ? b : m.ai.tgt); }   // where the grenade he throws now is to land (NADE)
+  if (!(m.stun > S.t) || m.down || m.dead) return;
+  const c = m.ctl, k = (m.stun - S.t) / (m.stunT || 1);
+  c.sp = (c.sp || 0) + STUN.sp * k; c.run = false;
+  if (k > 1 - STUN.hold) c.fire = false;
+  const s = Math.sin(S.t * 5 + (m.ai.seed || 0)) * .35 * k; c.mx += -c.mz * s; c.mz += c.mx * s;   // he reels
+})(aiMan);
+/* the unit card says how many of the squad reel from a blast */
+genCard = (f => (t, id) => {
+  const c = f(t, id); if (!c) return c;
+  const q = S.squads.find(o => o.team === t && o.id === id), n = q ? q.men.filter(m => !m.dead && m.stun > S.t).length : 0;
+  if (n) c.see.splice(2, 0, n + (n === 1 ? ' homem atordoado' : ' homens atordoados') + ' por explosão');
+  c.stun = n; return c;
+})(genCard);
 /* ---------- 3D scene (three.js) ---------- */
 const $ = s => document.querySelector(s);
 const cv = $('#cv'), hudCv = $('#hud'), hx = hudCv.getContext('2d');
@@ -32687,9 +33082,27 @@ function fortCam(p) {
    wall, roof, floor, part, foot, rub: colours; rise: how high a gable or a spire stands for its depth; near: the eye's near plane
    indoors; cam: how far short of a wall the eye behind a soldier stops */
 const CLOOK = { tile: 128, lod: 650, chunk: 380, back: .74, rise: [.34, 6.5, 1.3], near: .25, cam: .35,
-  wall: { plaster: [0xd9cfb8, 0xc9b79a, 0xe2d8c8, 0xbfae95], brick: [0xb06a50, 0x9a5f4b, 0xb98466], concrete: [0xb9b6ad, 0xa3a39c, 0xc7c2b5], stone: [0xb0a792, 0xa39a86], metal: [0x7f8a8c, 0x8c8572, 0x6f7a6a] },
-  roof: { ww2: [0x8a4b3a, 0x7a4636, 0x5d4a40], modern: [0x6f6a64, 0x5c5f66, 0x7a4b3d] }, flat: 0x5f5f5c, floor: 0x9a8b74, part: 0xbdb6a6, foot: 0x55524c, rub: .62, step: 0x8a8378 };
-const CMAT = ['plaster', 'brick', 'concrete', 'stone', 'metal'];
+  wall: { plaster: [0xd9cfb8, 0xc9b79a, 0xe2d8c8, 0xbfae95], brick: [0xb06a50, 0x9a5f4b, 0xb98466], concrete: [0xb9b6ad, 0xa3a39c, 0xc7c2b5], stone: [0xb0a792, 0xa39a86], metal: [0x7f8a8c, 0x8c8572, 0x6f7a6a],
+    wood: [0x8a6a4a, 0x7a5d40, 0x94744f, 0x6f6352] },
+  roof: { ww2: [0x8a4b3a, 0x7a4636, 0x5d4a40], modern: [0x6f6a64, 0x5c5f66, 0x7a4b3d] }, flat: 0x5f5f5c, floor: 0x9a8b74, part: 0xbdb6a6, foot: 0x55524c, rub: .62, step: 0x8a8378,
+  /* the look of a place, the same for every house of it (picked by the place, T.burgs): the colours of its plastered and brick walls, of
+     its roofs and of its shutters, by era. A material a region does not name keeps wall's */
+  reg: { ww2: [
+      { wall: { plaster: [0xece6d8, 0xe6dfcd, 0xf0ebe0, 0xe0d6c2] }, roof: [0xa0583d, 0x96503a, 0x8c4a35], shut: [0x4f6b52, 0x5a4636, 0x46607a] },   // whitewash and terracotta
+      { wall: { plaster: [0xd6b37d, 0xccaa74, 0xdcc193, 0xc9a77f], stone: [0xb8a888, 0xa89878] }, roof: [0x8a4b3a, 0x7a4636, 0x93503b], shut: [0x6b4a32, 0x4d5d6b, 0x5b6a3e] },   // ochre and stone
+      { wall: { plaster: [0xc8c2b4, 0xbdb5a5, 0xd2cab8], brick: [0x92503c, 0x83483a, 0x9d5c45] }, roof: [0x4e4c4e, 0x58524f, 0x5f5248], shut: [0x3f4a3e, 0x5d3b2e, 0x3c4654] } ],   // the north: brick and slate
+    modern: [
+      { wall: { plaster: [0xf1ede4, 0xe9e4d6, 0xdfe6e4, 0xeee2cc] }, roof: [0xa4603f, 0x8f5a44, 0x9b5a3e], shut: [0x5f7e8e, 0x4f6b52, 0x8a8f94] },
+      { wall: { plaster: [0xe2c99a, 0xd9b9a0, 0xc9d6c6, 0xe6d3b8, 0xd8c2c9] }, roof: [0x6f6a64, 0x7a4b3d, 0x8a4f3a], shut: [0x5a5f66, 0x7b5a3c, 0xe6e2da] },
+      { wall: { plaster: [0xcfcac0, 0xbdbab2, 0xd6d0c4], brick: [0xa65e47, 0x95553f, 0xb36a4f] }, roof: [0x4a4d52, 0x5c5f66, 0x55504c], shut: [0x3b3f45, 0x6a6e73, 0xdcdcd6] } ] },
+  /* what makes a house more than a box: the inner face of its walls (in: colours, the reveal of an opening darker by rev), the sill under a
+     window (sill: colour, m out, m thick), shutters beside it on a house or a row (shut: the share of them that have them), a plinth along the
+     ground storey (plinth: m high, m out, how much darker), the eaves (eave: m the roof runs past the walls; fascia: m deep), a chimney on a
+     house or a row (chim: m square, m over the ridge), a cornice round a flat roof (corn: m out, m deep). The details from det on (the
+     hangar's graphics: GFXQ), the inner faces and reveals always, drawn with the inside (lod m) */
+  in: [0xe8e2d4, 0xd9d4c6, 0xe3d6c0, 0xcfd6d2], rev: .82, sill: [0xd8d2c4, .14, .1], shut: .55, plinth: [.55, .06, .72], eave: .55, fascia: .2,
+  chim: [.62, .9], corn: [.3, .28], det: 1 };
+const CMAT = ['plaster', 'brick', 'concrete', 'stone', 'metal', '', 'wood'];   // a material's row of the atlas (5: the flat tiles)
 let gCity = null;
 function cityTex() {
   const P = CLOOK.tile, cv = document.createElement('canvas'), g = cv.getContext('2d'); let sd = 7;
@@ -32697,19 +33110,21 @@ function cityTex() {
   cv.width = cv.height = P * 8;
   const box = (c, r, u0, u1, v0, v1) => [c * P + u0 * P, r * P + (1 - v1) * P, (u1 - u0) * P, (v1 - v0) * P];
   const base = (c, r) => {
-    const x = c * P, y = r * P; g.fillStyle = ['#ece8de', '#e9e2da', '#e6e6e2', '#e4e0d6', '#dfe2e2'][r] || '#e8e8e8'; g.fillRect(x, y, P, P);
+    const x = c * P, y = r * P; g.fillStyle = ['#ece8de', '#e9e2da', '#e6e6e2', '#e4e0d6', '#dfe2e2', '', '#e6dccb'][r] || '#e8e8e8'; g.fillRect(x, y, P, P);
     g.strokeStyle = 'rgba(40,30,20,.28)'; g.lineWidth = 1; g.beginPath();
     if (r === 1) for (let k = 0; k < 12; k++) { g.moveTo(x, y + k * P / 12 + .5); g.lineTo(x + P, y + k * P / 12 + .5); for (let q = 0; q < 5; q++) { const bx = x + (q + (k % 2 ? .5 : 0)) * P / 5; g.moveTo(bx, y + k * P / 12); g.lineTo(bx, y + (k + 1) * P / 12); } }
     else if (r === 2) { for (const k of [.02, .5, .98]) { g.moveTo(x, y + k * P); g.lineTo(x + P, y + k * P); } g.moveTo(x + 1, y); g.lineTo(x + 1, y + P); }
     else if (r === 3) for (let k = 0; k < 5; k++) { g.moveTo(x, y + k * P / 5 + .5); g.lineTo(x + P, y + k * P / 5 + .5); for (let q = 0; q < 3; q++) { const bx = x + (q + (k % 2 ? .5 : .1)) * P / 3; g.moveTo(bx, y + k * P / 5); g.lineTo(bx, y + (k + 1) * P / 5); } }
     else if (r === 4) for (let k = 0; k < 16; k++) { g.moveTo(x + k * P / 16 + .5, y); g.lineTo(x + k * P / 16 + .5, y + P); }
+    else if (r === 6) for (let k = 0; k < 9; k++) { const bx = x + k * P / 9 + .5; g.moveTo(bx, y); g.lineTo(bx, y + P); g.moveTo(bx + 1.5, y); g.lineTo(bx + 1.5, y + P); }   // boards
     g.stroke();
+    if (r === 6) for (let k = 0; k < 7; k++) { g.fillStyle = 'rgba(70,48,28,.35)'; g.beginPath(); g.ellipse(x + rnd() * P, y + rnd() * P, 1.5 + rnd() * 2, 2.5 + rnd() * 3, 0, 0, TAU); g.fill(); }   // knots
     for (let k = 0; k < 26; k++) { g.fillStyle = 'rgba(60,50,40,' + (.03 + rnd() * .05) + ')'; g.fillRect(x + rnd() * P, y + rnd() * P, 3 + rnd() * 14, 2 + rnd() * 6); }
     g.fillStyle = 'rgba(40,34,28,.16)'; g.fillRect(x, y + P - 7, P, 7);
   };
   const cut = (c, r, q, frame) => { const b = box(c, r, q[0], q[1], q[2], q[3]); g.fillStyle = frame; g.fillRect(b[0] - 4, b[1] - 4, b[2] + 8, b[3] + (q[2] ? 8 : 4)); g.clearRect(b[0], b[1], b[2], b[3]); return b; };
   const crack = (c, r, n) => { g.strokeStyle = 'rgba(25,20,16,.8)'; g.lineWidth = 1.6; for (let k = 0; k < n; k++) { let x = c * P + P * (.15 + rnd() * .7), y = r * P + P * (.1 + rnd() * .3); g.beginPath(); g.moveTo(x, y); for (let q = 0; q < 6; q++) { x += (rnd() - .5) * 22; y += 6 + rnd() * 12; g.lineTo(x, y); } g.stroke(); } };
-  for (let r = 0; r < 5; r++) {
+  for (const r of [0, 1, 2, 3, 4, 6]) {
     for (let c = 0; c < 7; c++) base(c, r);
     crack(1, r, 4);
     {   // a hole: scorched round its edge, then cut ragged
@@ -32731,10 +33146,14 @@ function cityTex() {
   { const x = 4 * P, y = 5 * P; g.fillStyle = '#d6d2ca'; g.fillRect(x, y, P, P); for (let k = 0; k < 70; k++) { const s = 6 + rnd() * 18; g.fillStyle = 'rgba(' + [60, 110, 150, 200][k % 4] + ',' + [56, 104, 144, 194][k % 4] + ',' + [50, 96, 136, 186][k % 4] + ',.8)'; g.save(); g.translate(x + rnd() * P, y + rnd() * P); g.rotate(rnd() * 3); g.fillRect(-s / 2, -s / 3, s, s * .66); g.restore(); } }
   const t = new THREE.CanvasTexture(cv); t.anisotropy = 4; t.generateMipmaps = true; t.minFilter = THREE.LinearMipmapLinearFilter; return t;
 }
-/* the tile an element shows: [column, row] of the atlas; 6 5 is nothing */
+/* the tile an element shows: [column, row] of the atlas; 6 5 is nothing. Codes: 0 a wall, 11 the inner face of an outer one (plastered
+   inside masonry), 1 a floor, 2 a roof, 3 rubble, 4 a step, 5 a plain wall, 6 a flat roof, 7 a pillar, 12 a detail in its colour while the
+   element is not holed, 13 while it stands */
 function cityTile(B, e, code) {
-  const s = S.cbs[B.off + e], k = B.kd[e], r = CMAT.indexOf(B.K.mat);
-  if (code === 0) return s === 3 ? [6, 5] : s === 2 ? [2, k > 4 ? 0 : r] : k === 2 ? [s ? 4 : 3, r] : k === 3 || k === 6 ? [5, k > 4 ? 0 : r] : k === 4 ? [6, r] : [s ? 1 : 0, k > 4 ? 0 : r];
+  const s = S.cbs[B.off + e], k = B.kd[e], r0 = CMAT.indexOf(B.K.mat), r = code === 11 && r0 < 4 ? 0 : r0;
+  if (code === 12) return s < 2 ? [7, 5] : [6, 5];
+  if (code === 13) return s < 3 ? [7, 5] : [6, 5];
+  if (code === 0 || code === 11) return s === 3 ? [6, 5] : s === 2 ? [2, k > 4 ? 0 : r] : k === 2 ? [s ? 4 : 3, r] : k === 3 || k === 6 ? [5, k > 4 ? 0 : r] : k === 4 ? [6, r] : [s ? 1 : 0, k > 4 ? 0 : r];
   if (code === 1) return s === 3 ? [6, 5] : [s ? 1 : 0, 5];
   if (code === 2) return s === 3 ? [6, 5] : [2, 5];
   if (code === 3) return s ? [4, 5] : [6, 5];
@@ -32762,36 +33181,89 @@ function cityScene() {
     M.uv.push(...cityUV(e < 0 ? code : cityTile(B, e, code))); M.n += 4;
     if (e >= 0) (fa[B.off + e] || (fa[B.off + e] = [])).push(cur.i * 2 + q, v, code);
   };
-  const tintOf = (hex, k) => new THREE.Color(hex).multiplyScalar(k);
+  const tintOf = (hex, k) => new THREE.Color(hex).multiplyScalar(k), det = gfxLevel() >= C.det;
+  /* a quad of points A B C D (the building's own frame) facing n: its corners are turned round when they face the other way */
+  const fq = (q, e, code, tint, A, Bq, Cq, Dq, n) => {
+    const ux = Bq[0] - A[0], uy = Bq[1] - A[1], uz = Bq[2] - A[2], vx = Cq[0] - A[0], vy = Cq[1] - A[1], vz = Cq[2] - A[2];
+    if ((uy * vz - uz * vy) * n[0] + (uz * vx - ux * vz) * n[1] + (ux * vy - uy * vx) * n[2] < 0) quad(q, e, code, tint, ...Bq, ...A, ...Dq, ...Cq);
+    else quad(q, e, code, tint, ...A, ...Bq, ...Cq, ...Dq);
+  };
+  const regOf = o => { const R = C.reg[S.era] || C.reg.ww2, b = (T.burgs || []).find(b => Math.hypot(o.x - b.x, o.z - b.z) < (b.ru || 60) + 80), h = b ? hash2(Math.round(b.x), Math.round(b.z), 11) : hash2(Math.round(o.x / 300), Math.round(o.z / 300), 11); return R[(h * R.length) | 0]; };
   for (o of H) {
     B = o.B; K = B.K; sh = B.sh; c = o.c; s = o.s;
-    const key = Math.floor(o.x / C.chunk) * 4096 + Math.floor(o.z / C.chunk), nx = B.nx, nz = B.nz, nl = B.nl, bw = B.bw, bd = B.bd, W = nx * bw, D = nz * bd, Ht = nl * sh, pal = C.wall[K.mat];
+    const key = Math.floor(o.x / C.chunk) * 4096 + Math.floor(o.z / C.chunk), nx = B.nx, nz = B.nz, nl = B.nl, bw = B.bw, bd = B.bd, W = nx * bw, D = nz * bd, Ht = nl * sh, rg = regOf(o), pal = rg.wall[K.mat] || C.wall[K.mat], th = B.mat.th;
     cur = chunks.get(key); if (!cur) { cur = [part(), part()]; cur.i = gCity.list.length; gCity.list.push(cur); chunks.set(key, cur); }
     wc = tintOf(pal[(B.tint * pal.length) | 0], .92 + .16 * ((B.tint * 7) % 1));
-    const pc = tintOf(C.part, 1), fc = tintOf(C.floor, K.mat === 'concrete' || K.mat === 'metal' ? .85 : 1), rc = tintOf(K.roof === 'gable' || K.roof === 'spire' ? C.roof[S.era][(B.tint * 3) | 0] : C.flat, 1), ft = tintOf(C.foot, 1), ru = wc.clone().multiplyScalar(C.rub), sc = tintOf(C.step, 1);
+    const tiled = K.roof === 'gable' || K.roof === 'spire', masonry = K.mat !== 'metal' && K.mat !== 'wood', rpal = tiled && masonry ? rg.roof : C.roof[S.era];
+    const pc = tintOf(C.part, 1), fc = tintOf(C.floor, K.mat === 'concrete' || K.mat === 'metal' ? .85 : 1), rc = tintOf(tiled ? rpal[(B.tint * rpal.length) | 0] : C.flat, 1), ft = tintOf(C.foot, 1), ru = wc.clone().multiplyScalar(C.rub), sc = tintOf(C.step, 1);
+    const ic = masonry ? tintOf(C.in[((B.tint * 13) % 1 * C.in.length) | 0], .95) : wc.clone().multiplyScalar(.85), rv = (masonry ? wc : ic).clone().multiplyScalar(C.rev), slc = tintOf(C.sill[0], .95), plc = wc.clone().multiplyScalar(C.plinth[2]);
+    const shut = det && (K === CITY.types.house || K === CITY.types.row) && masonry && (B.tint * 17) % 1 < C.shut, shc = tintOf(rg.shut[((B.tint * 29) % 1 * rg.shut.length) | 0], 1);
+    /* the body of outer wall e of storey Lv, on axis ax (0: the wall x = W or 0, along z; 1: z = D or 0, along x), from u0 to u1 along it:
+       its inner face th within, the reveal of its opening, and from det on the sill and shutters of a window and the plinth */
+    const P = (ax, hi, u, y, d) => ax ? [u, y, hi ? D - d : d] : [hi ? W - d : d, y, u], N = (ax, hi, k) => { const v = (hi ? 1 : -1) * k; return ax ? [0, 0, v] : [v, 0, 0]; }, U = (ax, k) => ax ? [k, 0, 0] : [0, 0, k];
+    const body = (e, ax, hi, u0, u1, y0, y1, Lv) => {
+      const k = B.kd[e], out = N(ax, hi, 1), inn = N(ax, hi, -1);
+      fq(1, e, 11, ic, P(ax, hi, u0, y0, th), P(ax, hi, u1, y0, th), P(ax, hi, u1, y1, th), P(ax, hi, u0, y1, th), inn);
+      const g = k >= 2 && k <= 4 ? CITY.gap[k] : null;
+      if (g) {   // the opening goes through the wall: its jambs, its head and its sill, th deep
+        const a = u0 + g[0] * (u1 - u0), b = u0 + g[1] * (u1 - u0), lo = y0 + g[2] * (y1 - y0), up = y0 + g[3] * (y1 - y0);
+        fq(1, e, 12, rv, P(ax, hi, a, lo, 0), P(ax, hi, a, lo, th), P(ax, hi, a, up, th), P(ax, hi, a, up, 0), U(ax, 1));
+        fq(1, e, 12, rv, P(ax, hi, b, lo, 0), P(ax, hi, b, lo, th), P(ax, hi, b, up, th), P(ax, hi, b, up, 0), U(ax, -1));
+        fq(1, e, 12, rv, P(ax, hi, a, up, 0), P(ax, hi, b, up, 0), P(ax, hi, b, up, th), P(ax, hi, a, up, th), [0, -1, 0]);
+        if (g[2] > 0) fq(1, e, 12, rv, P(ax, hi, a, lo, 0), P(ax, hi, b, lo, 0), P(ax, hi, b, lo, th), P(ax, hi, a, lo, th), [0, 1, 0]);
+        if (det && k === 2) {   // a sill that stands out, and shutters
+          const S0 = C.sill, o1 = -S0[1], w = (b - a) / 2;
+          fq(0, e, 12, slc, P(ax, hi, a - .08, lo, 0), P(ax, hi, b + .08, lo, 0), P(ax, hi, b + .08, lo, o1), P(ax, hi, a - .08, lo, o1), [0, 1, 0]);
+          fq(0, e, 12, slc, P(ax, hi, a - .08, lo - S0[2], o1), P(ax, hi, b + .08, lo - S0[2], o1), P(ax, hi, b + .08, lo, o1), P(ax, hi, a - .08, lo, o1), out);
+          if (shut) for (const [p, q] of [[a - w, a], [b, b + w]]) fq(0, e, 12, shc, P(ax, hi, p, lo, -.04), P(ax, hi, q, lo, -.04), P(ax, hi, q, up, -.04), P(ax, hi, p, up, -.04), out);
+        }
+      }
+      if (det && !Lv && k !== 3 && k !== 4 && masonry) {   // the plinth
+        const ph = C.plinth[0], po = -C.plinth[1];
+        fq(0, e, 12, plc, P(ax, hi, u0, y0, po), P(ax, hi, u1, y0, po), P(ax, hi, u1, y0 + ph, po), P(ax, hi, u0, y0 + ph, po), out);
+        fq(0, e, 12, plc, P(ax, hi, u0, y0 + ph, 0), P(ax, hi, u1, y0 + ph, 0), P(ax, hi, u1, y0 + ph, po), P(ax, hi, u0, y0 + ph, po), [0, 1, 0]);
+      }
+      if (det && Lv === nl - 1 && K.roof === 'flat') {   // the cornice round a flat roof
+        const co = -C.corn[0], cd = C.corn[1];
+        fq(0, e, 13, wc, P(ax, hi, u0, y1, 0), P(ax, hi, u1, y1, 0), P(ax, hi, u1, y1, co), P(ax, hi, u0, y1, co), [0, 1, 0]);
+        fq(0, e, 13, plc, P(ax, hi, u0, y1 - cd, co), P(ax, hi, u1, y1 - cd, co), P(ax, hi, u1, y1, co), P(ax, hi, u0, y1, co), out);
+        fq(0, e, 13, plc, P(ax, hi, u0, y1 - cd, 0), P(ax, hi, u1, y1 - cd, 0), P(ax, hi, u1, y1 - cd, co), P(ax, hi, u0, y1 - cd, co), [0, -1, 0]);
+      }
+    };
     for (let Lv = 0; Lv < nl; Lv++) {
       const y0 = Lv * sh, y1 = y0 + sh;
       for (let j = 0; j < nz; j++) for (let i = 0; i <= nx; i++) {
         const e = (Lv * nz + j) * (nx + 1) + i, x = i * bw, ext = i === 0 || i === nx; if (!B.kd[e]) continue;
         if (i === nx) quad(0, e, 0, wc, x, y0, (j + 1) * bd, x, y0, j * bd, x, y1, j * bd, x, y1, (j + 1) * bd);
         else quad(ext ? 0 : 1, e, 0, ext ? wc : pc, x, y0, j * bd, x, y0, (j + 1) * bd, x, y1, (j + 1) * bd, x, y1, j * bd);
+        if (ext) body(e, 0, i === nx, j * bd, (j + 1) * bd, y0, y1, Lv);
       }
       for (let j = 0; j <= nz; j++) for (let i = 0; i < nx; i++) {
         const e = B.oZ + (Lv * (nz + 1) + j) * nx + i, z = j * bd, ext = j === 0 || j === nz; if (!B.kd[e]) continue;
         if (j === nz) quad(0, e, 0, wc, i * bw, y0, z, (i + 1) * bw, y0, z, (i + 1) * bw, y1, z, i * bw, y1, z);
         else quad(ext ? 0 : 1, e, 0, ext ? wc : pc, (i + 1) * bw, y0, z, i * bw, y0, z, i * bw, y1, z, (i + 1) * bw, y1, z);
+        if (ext) body(e, 1, j === nz, i * bw, (i + 1) * bw, y0, y1, Lv);
       }
     }
-    const rise = K.roof === 'gable' ? Math.min(D * C.rise[0], C.rise[1]) : 0, rh = z => rise * (1 - Math.abs(z - D / 2) / (D / 2));
+    const rise = K.roof === 'gable' ? Math.min(D * C.rise[0], C.rise[1]) : 0, rh = z => rise * (1 - Math.abs(z - D / 2) / (D / 2)), ov = C.eave, fd = C.fascia, fsc = rc.clone().multiplyScalar(.7);
     for (let Lv = 1; Lv <= nl; Lv++) for (let j = 0; j < nz; j++) for (let i = 0; i < nx; i++) {
       const e = B.oS + ((Lv - 1) * nz + j) * nx + i, y = Lv * sh, x0 = i * bw, x1 = x0 + bw, z0 = j * bd, z1 = z0 + bd, top = Lv === nl;
       if (B.kd[e]) quad(top && K.roof === 'flat' ? 0 : 1, e, top && K.roof === 'flat' ? 6 : 1, top && K.roof === 'flat' ? rc : fc, x0, y, z0, x0, y, z1, x1, y, z1, x1, y, z0);
       if (!top || !rise) continue;
+      const ex0 = i === 0 ? x0 - ov : x0, ex1 = i === nx - 1 ? x1 + ov : x1;   // the eaves: the roof runs on past the walls
       for (const [a, b] of z0 < D / 2 && z1 > D / 2 ? [[z0, D / 2], [D / 2, z1]] : [[z0, z1]]) {
-        quad(0, e, 2, rc, x0, y + rh(a), a, x0, y + rh(b), b, x1, y + rh(b), b, x1, y + rh(a), a);
+        const ea = a === 0 ? -ov : a, eb = b === D ? D + ov : b;
+        quad(0, e, 2, rc, ex0, y + rh(ea), ea, ex0, y + rh(eb), eb, ex1, y + rh(eb), eb, ex1, y + rh(ea), ea);
         if (i === 0) quad(0, e, 5, wc, 0, y, b, 0, y, a, 0, y + rh(a), a, 0, y + rh(b), b);
         if (i === nx - 1) quad(0, e, 5, wc, W, y, a, W, y, b, W, y + rh(b), b, W, y + rh(a), a);
+        if (det) for (const [z, n] of [[-ov, -1], [D + ov, 1]]) if (z === ea || z === eb) fq(0, e, 13, fsc, [ex0, y + rh(z) - fd, z], [ex1, y + rh(z) - fd, z], [ex1, y + rh(z), z], [ex0, y + rh(z), z], [0, 0, n]);   // the fascia along the eave
       }
+    }
+    if (det && rise && masonry && (K === CITY.types.house || K === CITY.types.row)) {   // a chimney, on the roof of one bay, near the ridge
+      const ci = ((B.tint * 37) % 1 * nx) | 0, zc = D / 2 + (B.tint > .5 ? 1 : -1) * Math.min(1.1, D / 5), jc = clamp(Math.floor(zc / bd), 0, nz - 1), e = B.oS + ((nl - 1) * nz + jc) * nx + ci, h = C.chim[0] / 2, xc = (ci + .5) * bw;
+      const yb = Ht + rh(zc) - .5, yt = Ht + rise + C.chim[1], cc = wc.clone().multiplyScalar(.9);
+      for (const [a, b, p, q, n] of [[-h, -h, h, -h, [0, 0, -1]], [h, -h, h, h, [1, 0, 0]], [h, h, -h, h, [0, 0, 1]], [-h, h, -h, -h, [-1, 0, 0]]]) fq(0, e, 5, cc, [xc + a, yb, zc + b], [xc + p, yb, zc + q], [xc + p, yt, zc + q], [xc + a, yt, zc + b], n);
+      fq(0, e, 13, tintOf(0x3a3632, 1), [xc - h - .05, yt, zc - h - .05], [xc + h + .05, yt, zc - h - .05], [xc + h + .05, yt, zc + h + .05], [xc - h - .05, yt, zc + h + .05], [0, 1, 0]);
     }
     if (K.roof === 'spire') { const e = B.oS + (nl - 1) * nz * nx, ap = W * C.rise[2]; for (const [a, b, p, q] of [[0, 0, W, 0], [W, 0, W, D], [W, D, 0, D], [0, D, 0, 0]]) quad(0, e, 2, rc, p, Ht, q, a, Ht, b, W / 2, Ht + ap, D / 2, W / 2, Ht + ap, D / 2); }
     quad(1, -1, [0, 5], fc, 0, .04, 0, 0, .04, D, W, .04, D, W, .04, 0);
@@ -33817,6 +34289,14 @@ function drawHud() {
     if (!onScr(s) || hid(P, g) || walled(cp.x, cp.y, cp.z, g.x, g.y + 1.5, g.z)) continue;
     if (g.team === me) tri(s.x, s.y - 6, Math.PI / 2, 3.5, FRIEND);
     if (g.pid) txt(g.name, s.x, s.y - 12 - 12 * u, 12 * u, g.team !== me ? FOE : FRIEND, 'center');
+  }
+  for (const g of S.men) {   // what soldiers call out (SAY): a balloon over the head, an enemy's only while he is made out
+    if (g === P || g.dead || g.in || !(g.sayT > S.t) || Math.abs(g.x - P.x) > SAY.r || Math.abs(g.z - P.z) > SAY.r || dist(g, P) > SAY.r || (g.team !== me && hid(P, g))) continue;
+    const s = proj(g.x, g.y + STANCE[g.st].h * MAN.sc + 1.3, g.z); if (!onScr(s) || walled(cp.x, cp.y, cp.z, g.x, g.y + 1.5, g.z)) continue;
+    const t = sayText(g); if (!t) continue;
+    const sz = 11 * u; hx.font = sz + "px 'Share Tech Mono', ui-monospace, monospace"; const w = hx.measureText(t).width + 8 * u, h = sz + 6 * u, bx = s.x - w / 2, by = s.y - h - 6 * u;
+    hx.fillStyle = 'rgba(240,236,220,.88)'; hx.fillRect(bx, by, w, h); hx.beginPath(); hx.moveTo(s.x - 4 * u, by + h); hx.lineTo(s.x, by + h + 5 * u); hx.lineTo(s.x + 4 * u, by + h); hx.fill();
+    hx.textAlign = 'center'; hx.fillStyle = g.team === me ? '#15301c' : '#4a1210'; hx.fillText(t, s.x, by + h - 4 * u);
   }
   for (const b of S.sup) {   // supply bases: one's own side's always, the enemy's while it is spotted
     const own = b.team === me, d = hdist(b, P), col = own ? FRIEND : FOE;

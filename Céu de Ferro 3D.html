@@ -39217,7 +39217,7 @@ function updateCamera(dt) {
   camSt.sens = seat && p.kind ? seat.fov[zoomOf(seat)] / 58 : 1;
   if (p.man) {   // on foot: over the right shoulder, or from the eye; sighting narrows the view. A step bobs it and a shot kicks it
     const a = S.aim && p === S.my ? S.aim.d : p.f, e = manEye(p), h = Math.atan2(-a.z, a.x), sp = Math.min(1, Math.hypot(p.v.x, p.v.z) / 2.5), ts = S.t - p.shotT;
-    const bob = seat ? Math.sin(p.step * 2.3) * .045 * sp * calm : 0, kick = ts < .15 ? (1 - ts / .15) * (p.arms[p.w].d.k ? .03 : .007) * calm : 0;
+    const bob = seat ? Math.sin(p.step * 2.3) * .045 * sp * calm : 0, kick = ts < .15 ? (1 - ts / .15) * (p.arms[p.w].d.k ? .03 : .007 * vmKick(p.arms[p.w].d, 'rifle')) * calm : 0;
     camSt.ak = (camSt.ak || 0) + ((p.ctl.ads && !p.dead ? 1 : 0) - (camSt.ak || 0)) * Math.min(1, dt * 12);
     camera.up.set(0, 1, 0);
     if (p.dead) camera.lookAt(p.x, p.y + .4, p.z);
@@ -46998,8 +46998,9 @@ function vmBuild(pk) {
   hb(0, -.035, 0); vmLimb(R, [-.03, -.05, .02], [-.3, -.21, .13], .075, sleeve); vmLimb(R, [-.3, -.21, .13], [-.6, -.36, .32], .085, sleeve);
   hb(lx, ly, lz); vmLimb(R, [lx - .03, ly - .03, lz - .02], [lx - .26, -.26, -.2], .075, sleeve); vmLimb(R, [lx - .26, -.26, -.2], [lx - .55, -.4, -.38], .085, sleeve);
   if (pk.cls !== 'mort' && pk.cls !== 'tube') {   // the flash at the muzzle
-    const f = new THREE.Sprite(new THREE.SpriteMaterial({ color: 0xffd27a, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, fog: false }));
+    const f = new THREE.Sprite(vmFlashMat());
     f.position.set(V.mz[0], V.mz[1], V.mz[2] || 0); f.visible = false; turn.add(f); V.flash = f;
+    const ej = new THREE.Object3D(); ej.position.set(clamp(.12 * L, .04, .16), B.min.y + .8 * (B.max.y - B.min.y), B.max.z); turn.add(ej); V.ej = ej;   // the ejection port: a little ahead of the grip, high on the right
   }
   /* sighted: the grip moved so the top of the weapon is just under the line of sight; a launcher's tube beside the eye */
   const ads = VMP[pk.cls][1].slice();
@@ -47016,12 +47017,62 @@ function vmGet(pk) {
   if (V) VM.M.set(pk.key, V);
   return V;
 }
+/* ---------- the weapon's shot, seen (cf-pol-armas): the flash, the brass and the kick ----------
+   The muzzle flash is a star of spikes round a white-hot core fading to nothing, drawn once on a canvas (vmFlashMat): without a map the
+   sprite drew its whole square, a pale card in front of the muzzle on every shot. A spent case flies out of the ejection port to the
+   right on each shot (vmEjectAt: at once; a bolt rifle's when its bolt is worked, VMC.bolt s after; never a launcher's or the mortar's),
+   up and back, spinning, falls out of the view and is gone in VMC.life s, at most VMC.n in the air. The kick of a rifle grows with its
+   round (vmKick: the damage over VMC.kd, within VMC.kick), and each shot throws it a little to one side and rolls it (VM.kx, VM.kz: drawn
+   anew each shot), so automatic fire does not move like one picture */
+const VMC = { n: 6, life: .6, g: 9.8, v: [1.5, 1.3, .35], jit: .35, bolt: .45, len: { rifle: .024, pistol: .014 }, kd: 8, kick: [.8, 1.8] };
+function vmFlashMat() {
+  if (!VM.ftex) {
+    const c = document.createElement('canvas'), N = 64, h = N / 2, g = c.getContext('2d'); c.width = c.height = N;
+    const grad = r => { const q = g.createRadialGradient(h, h, 0, h, h, r); q.addColorStop(0, 'rgba(255,255,236,1)'); q.addColorStop(.3, 'rgba(255,214,128,.9)'); q.addColorStop(.65, 'rgba(255,150,40,.35)'); q.addColorStop(1, 'rgba(255,120,20,0)'); return q; };
+    g.fillStyle = grad(h * .55); g.fillRect(0, 0, N, N);   // the glow
+    g.fillStyle = grad(h); g.beginPath();
+    for (let i = 0; i < 14; i++) { const a = i * Math.PI / 7 + .2, r = (i % 2 ? .2 : i % 4 ? .78 : 1) * h; g.lineTo(h + Math.cos(a) * r, h + Math.sin(a) * r); }   // seven spikes, long and short
+    g.closePath(); g.fill();
+    VM.ftex = new THREE.CanvasTexture(c);
+  }
+  return new THREE.SpriteMaterial({ map: VM.ftex, color: 0xffffff, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, fog: false });
+}
+/* s after a shot that its case comes out, or -1: none */
+const vmEjectAt = (d, cls) => (!d || d.k || (cls !== 'rifle' && cls !== 'pistol') ? -1 : !d.auto && d.rate >= 1.2 ? VMC.bolt : 0);
+const vmKick = (d, cls) => (cls === 'rifle' && d && d.dmg ? clamp(d.dmg / VMC.kd, VMC.kick[0], VMC.kick[1]) : 1);
+/* a case in the air: p, v in the eye's frame (m, m/s), t s since it left; false once it is gone */
+function vmCasStep(c, dt) { c.t += dt; c.v[1] -= VMC.g * dt; c.p[0] += c.v[0] * dt; c.p[1] += c.v[1] * dt; c.p[2] += c.v[2] * dt; return c.t < VMC.life; }
+/* a new shot of the weapon in hand (a, the one seen the frame before): the kick's throw for it, and when its case comes out (VM.ej, S.t) */
+function vmShot(a, d, cls) {
+  const shot = VM.la === a && a.t !== VM.lt && a.t > 0; VM.la = a; VM.lt = a.t;
+  if (!shot) return;
+  VM.kx = Math.random() * 2 - 1; VM.kz = Math.random() * 2 - 1;
+  const e = vmEjectAt(d, cls); if (e >= 0) VM.ej = a.t + e;
+}
+/* the cases: one out of the port when its time comes, the others on their way; off: all gone (the weapon not drawn) */
+function vmCas(V, dt, off) {
+  const L = VM.cas || (VM.cas = []);
+  if (off || reduced) { for (const c of L) { c.t = VMC.life; c.m.visible = false; } VM.ej = 0; return; }
+  if (VM.ej && S.t >= VM.ej && V.ej) {
+    VM.ej = 0;
+    let c = L.find(q => q.t >= VMC.life);
+    if (!c && L.length < VMC.n) { if (!VM.casG) { VM.casG = new THREE.CylinderGeometry(.0045, .0045, 1, 6); VM.casG.userData.keep = true; VM.casM = mat(0xb5913f, { flatShading: false }); } c = { m: new THREE.Mesh(VM.casG, VM.casM), p: [0, 0, 0], v: [0, 0, 0], t: 0, w: [0, 0] }; VM.sc.add(c.m); L.push(c); }
+    if (!c) c = L.reduce((x, y) => (y.t > x.t ? y : x));
+    V.root.updateMatrixWorld(true); const w = V.ej.getWorldPosition(new THREE.Vector3()), J = VMC.jit;
+    c.p = [w.x, w.y, w.z]; c.v = [VMC.v[0] * (1 + (Math.random() - .5) * J), VMC.v[1] * (1 + (Math.random() - .5) * J), VMC.v[2]]; c.t = 0; c.w = [rand(14, 24), rand(-8, 8)];
+    c.m.scale.set(1, V.pk.cls === 'pistol' ? VMC.len.pistol : VMC.len.rifle, 1); c.m.rotation.set(0, 0, Math.PI / 2);
+  }
+  for (const c of L) {
+    if (!(c.t < VMC.life)) { c.m.visible = false; continue; }
+    c.m.visible = vmCasStep(c, dt); c.m.position.fromArray(c.p); c.m.rotation.x += c.w[0] * dt; c.m.rotation.y += c.w[1] * dt;
+  }
+}
 /* each frame, after the world (render3d): the weapon in hand, if any */
 function vmRender() {
   const now = performance.now(), dt = Math.min(.1, (now - (VM.t || now)) / 1000), P = S.my; VM.t = now; VM.on = false; VM.f = frameId;
   for (const V of VM.M.values()) V.root.visible = false;
-  if (!vmOk() || !P || !P.man || P.dead || P.in || S.watch || curSeat() !== SEAT.inf) { VM.ph = null; return; }
-  if (scoped(P) && camSt.ak > .5) return;   // the scope is the view
+  if (!vmOk() || !P || !P.man || P.dead || P.in || S.watch || curSeat() !== SEAT.inf) { VM.ph = null; VM.la = null; if (VM.cas) vmCas(null, 0, true); return; }
+  if (scoped(P) && camSt.ak > .5) { VM.la = null; if (VM.cas) vmCas(null, 0, true); return; }   // the scope is the view
   const a = P.arms[P.w], d = a && a.d, gp = slotVm(P), pk = (gp && vmGet(gp) && gp) || vmPick(d, P.def); if (!pk) return;   // a compartment's item with a model (cf-slots-arma), else the weapon of before
   for (const o of P.arms) { const q = o !== a && vmPick(o.d, P.def); if (q && q.id) packGet(q.id); }   // the other weapon too, so a swap finds it here
   const V = vmGet(pk); if (!V) return;
@@ -47042,15 +47093,16 @@ function vmRender() {
   if (VM.ph === null) { VM.ph = h; VM.pp = pt; }
   let dh = h - VM.ph; dh -= Math.round(dh / TAU) * TAU; VM.ph = h; const dp = pt - VM.pp; VM.pp = pt;
   const e = Math.exp(-dt * 9); VM.sx = clamp(VM.sx * e + dh * .5, -.09, .09); VM.sy = clamp(VM.sy * e + dp * .5, -.07, .07);
+  vmShot(a, d, cls); const kp = vmKick(d, cls);
   const T = big ? .3 : .12, rc = ts >= 0 && ts < T ? (1 - ts / T) ** 2 * calm : 0;
   const rl = a.rl > 0 && d.rl ? Math.sin(Math.PI * clamp(1 - a.rl / d.rl, 0, 1)) ** .6 : 0, sw = S.t < P.swT ? clamp((P.swT - S.t) / MAN.swap, 0, 1) : 0;
   const hip = V.hip, ads = V.ads, lerp = (i) => hip[i] + (ads[i] - hip[i]) * k, loose = (1 - .75 * k) * calm, run = VM.rn * (1 - k);
   const bx = Math.sin(ph * 1.15) * .009 * sp * loose, by = -Math.abs(Math.sin(ph * 2.3)) * .01 * sp * loose + Math.sin(S.t * 1.6) * .0018 * (1 - k) * calm;
   const R = V.root;
-  R.position.set(lerp(0) + bx - .04 * run + VM.sx * .25 * loose - .03 * rl, lerp(1) + by - .03 * run - .13 * rl - .3 * sw - VM.sy * .2 * loose, lerp(2) + (big ? .1 : cls === 'pistol' ? .03 : .045) * rc);
-  R.rotation.set((big ? .05 : cls === 'pistol' ? .16 : .055) * rc - .15 * run + .25 * rl - .7 * sw - VM.sy * loose, .03 * (1 - k) + .55 * run - VM.sx * loose, .35 * run + .55 * rl, 'YXZ');
-  if (V.flash) { const on = !d.k && ts >= 0 && ts < .05 && !reduced; V.flash.visible = on; if (on) { const s = (cls === 'pistol' ? .07 : .12) * (.8 + Math.random() * .5); V.flash.scale.set(s, s, 1); V.flash.material.rotation = Math.random() * TAU; } }
-  R.visible = true;
+  R.position.set(lerp(0) + bx - .04 * run + VM.sx * .25 * loose - .03 * rl, lerp(1) + by - .03 * run - .13 * rl - .3 * sw - VM.sy * .2 * loose, lerp(2) + (big ? .1 : cls === 'pistol' ? .03 : .045 * kp) * rc);
+  R.rotation.set((big ? .05 : cls === 'pistol' ? .16 : .055 * kp) * rc - .15 * run + .25 * rl - .7 * sw - VM.sy * loose, .03 * (1 - k) + .55 * run - VM.sx * loose + (big ? 0 : .02 * (VM.kx || 0) * rc), .35 * run + .55 * rl + (big ? 0 : .045 * (VM.kz || 0) * rc), 'YXZ');
+  if (V.flash) { const on = !d.k && ts >= 0 && ts < .05 && !reduced; V.flash.visible = on; if (on) { const s = (cls === 'pistol' ? .1 : .17) * (.8 + Math.random() * .5); V.flash.scale.set(s, s, 1); V.flash.material.rotation = Math.random() * TAU; } }
+  R.visible = true; vmCas(V, dt);
   /* drawn over the world: its own camera and field of view, the depth cleared */
   const C = VM.cam, asp = cw / Math.max(1, ch); if (C.aspect !== asp) { C.aspect = asp; C.updateProjectionMatrix(); }
   const ac = renderer.autoClear; renderer.autoClear = false; renderer.clearDepth(); renderer.render(VM.sc, C); renderer.autoClear = ac;

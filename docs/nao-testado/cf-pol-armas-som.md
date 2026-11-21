@@ -14,7 +14,7 @@ Tudo na seção `sound` da página (`SND`), sem arquivos de som:
 ## Testado
 
 - `tests/som.js` (sem navegador, sobre um AudioContext que grava): todos os itens acima. Contra a página do main, a parte do bug falha ("1 de 5"), o compressor também.
-- Navegador (Chromium headless, swiftshader, 800 × 500, partida moderna como Fuzileiro, 40 s com o gatilho apertado): o AudioContext roda (`running`), o compressor está no lugar, os 11 tiros da M4 deram 9 sons (o que levou à mudança de não descartar o segundo tiro do mesmo quadro) e nenhum erro no console.
+- Navegador (Chromium headless, swiftshader, 800 × 500, partida moderna como Fuzileiro, 40 s com o gatilho apertado): o AudioContext roda (`running`), o compressor está no lugar, nenhum erro no console. Na primeira rodada, 11 tiros da M4 deram 9 sons: a 0,2 quadro/s dois tiros caíam no mesmo quadro e o segundo era descartado. Depois da mudança (o segundo toca 30 ms depois), 12 tiros deram os 12 sons.
 - Custo: a varredura das balas perto da cabeça leva cerca de 14 µs por quadro com 400 balas no ar (Node, máquina cheia).
 
 ## Não testado

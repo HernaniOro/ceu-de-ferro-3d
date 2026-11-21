@@ -54,3 +54,8 @@ O número que este pacote tem de mostrar ("pronto quando"): a régua é estável
 7. **Três lados.** Não foi jogado (a sede HS2 dos Insurgentes, `anaN() = 3`). Como testar: `node tools/balance.js --torneio 2 --lados 3 --min 10 --nobudget`.
 8. **A revisão pós-batalha na tela não mostra a régua.** Só a revisão (`R.g2`), o MCP (`get_match_report`) e o `balance.js` mostram.
 9. **Custo.** A amostragem roda a cada 5 s, com laços sobre os soldados, as esquadras e os pontos e uma busca de prédio (`bldAt`) por soldado. Não foi medido o custo por quadro com o medidor ligado (sem `--nobudget`).
+10. **A régua gravada tem só 1944.** São 6 partidas, e não 12: as modernas ainda rodavam, a cerca de 9 h de relógio por partida num node saturado.
+    - Não há número de cúpula, de foguetes nem de guerra moderna em `tools/ref/general2-base.json`.
+    - Como testar: juntar as 6 modernas do mesmo torneio quando terminarem (ou jogar `--era modern --seed 7 --torneio 6`) e atualizar a régua.
+11. **km embarcado.** A régua gravada tem 0 km embarcado: uma esquadra numa carona (`rideBoard`, homens `gone` a bordo) não era seguida. O conserto (`g2Where`, a esquadra fica onde está o veículo da carona) foi conferido só com objetos inventados na parte 1 do teste, e não numa partida.
+    - Como testar: uma partida de 1944 de 15 min, conferindo km embarcado > 0 quando o `EMB` registra caronas (`S.emb.rode`).

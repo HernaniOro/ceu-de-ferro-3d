@@ -52,6 +52,9 @@ const C0 = H.load({ ana: true }), $0 = C0.$, G2R = $0('G2R');
   ok(rows.length === empty.length && rows.length >= 20 && rows.concat(empty).every(r => r.length === 3 && r.every(c => typeof c === 'string' && c && !/undefined|NaN/.test(c))), rows.length + ' rows [measure, value, target], none undefined or NaN, with data and without');
   const V = C0.anaReport(ev.filter(e => e.k !== 'end'), 1);
   ok(V.g2 && V.g2.side[0] === null && V.g2.side[1] && V.g2.side[1].raw.inf[0] === 1, 'a side\'s view of a match not over: only its own counters');
+  const W = $0('g2Where'), u = { x: 500, z: 60, dead: false }, man = (x, o) => Object.assign({ x, z: 0, dead: false, gone: false }, o);
+  const w1 = W({ men: [man(10)] }), w2 = W({ men: [man(10, { in: u })] }), w3 = W({ men: [man(10, { gone: true })], rd: { u } }), w4 = W({ men: [man(10, { dead: true })], rd: { u } });
+  ok(w1.o.x === 10 && !w1.ab && w2.o === u && w2.ab && w3 && w3.o === u && w3.ab && w4 === null, 'where a squad is (g2Where): its leader on foot; the vehicle he rides; the vehicle of its ride with its men gone aboard (the km aboard); nobody left: none');
   ok(C0.anaReport(ev.filter(e => e.k !== 'g2' && e.k !== 'g2c').map(e => (e.k === 'hdr' ? Object.assign({}, e, { g2: undefined }) : e))).g2 === null, 'a match before the yardstick: R.g2 null');
 }
 

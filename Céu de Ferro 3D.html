@@ -37071,7 +37071,8 @@ genCard = (f => (t, id) => {
      inf  [soldier-s of the AI on foot (not down, not aboard), in a building (bldAt, as the research's probe), in the defence of a town (within
           its r of an urban point s holds while an enemy is within thr m of it), of those in a building, inside an urban point an enemy holds]
      snp  [sniper-s, in a building, shots fired]           at  [AT rounds (heat, atgm) fired by soldiers of the AI, at armour (G2R.armour)]
-     km   [squad-m on foot, squad-m aboard]: each squad's leader, or the vehicle he rides, from one look to the next (a jump over hop m is not a walk)
+     km   [squad-m on foot, squad-m aboard]: each squad's leader, or the vehicle he rides, or the vehicle of its ride (rideBoard puts the men
+          aboard as gone: g2Where), from one look to the next (a jump over hop m is not a walk)
      emb  [long walks begun, ridden]: EMB's own measure (S.emb), taken as it stands
      df   [defender-s: men of s within dr m of a point s holds with an enemy within thr m, Σ distance to its centre, s with a mate there,
           Σ distance to the nearest mate, s with him nn m or more]
@@ -37125,6 +37126,12 @@ function g2Fresh() {
   return { S, D: [], last: S.t, sT: S.t + G2R.dt, bT: S.t, evT: S.t + G2R.ev, end: false, err: null, nev: 0, pos: new WeakMap(), ops: new WeakSet(), opsH: new WeakSet(), bomb: new WeakSet(),
     fob: new WeakSet(), hq: [], hold: S.cq.p.map(p => p.hold), pcq: [], as: [], mem: new WeakMap(), cmb: [], cid: 0, out: 0 };
 }
+/* where squad q is and whether it is aboard: its leader on foot, or the vehicle he rides (m.in); a squad on a ride (rideBoard: its men gone
+   aboard q.rd.u, which they follow) is where that vehicle is. null for a squad with nobody left */
+function g2Where(q) {
+  const L = anaLead(q); if (L) return { o: L.in || L, ab: !!L.in };
+  const u = q.rd && q.rd.u; return u && !u.dead && q.men.some(m => !m.dead) ? { o: u, ab: true } : null;
+}
 /* the places of side s an enemy round coming down near counts against (looked up every dt s) */
 function g2Assets(s) {
   const l = typeof aidAreas === 'function' && S.base && S.base[s] ? aidAreas(s).slice() : [];
@@ -37146,7 +37153,7 @@ function g2Bombs() {
 }
 /* the look every dt s */
 function g2Sample(h) {
-  const n = anaN(), P = S.cq.p, sd = anaSides(n), lead = q => anaLead(q), at = L => L.in || L;
+  const n = anaN(), P = S.cq.p, sd = anaSides(n), lead = q => anaLead(q);
   for (const s of sd) G2S.as[s] = g2Assets(s);
   /* who is on the ground, and which held points have an enemy near */
   const gnd = [];
@@ -37183,9 +37190,9 @@ function g2Sample(h) {
   const seat = sd.map(s => (typeof aidSeat === 'function' && S.T && S.T.burgs ? aidSeat(s) : null)), cnt = seat.map(() => sd.map(() => 0));
   for (const q of S.squads) {
     if (q.net || !q.men || !g2Ok(q.team)) continue;
-    const L = lead(q); if (!L) continue;
-    const o = at(L), p = G2S.pos.get(q);
-    if (p) { const d = Math.hypot(o.x - p.x, o.z - p.z); if (d < G2R.hop) g2D(q.team).km[L.in ? 1 : 0] += d; }
+    const at = g2Where(q); if (!at) continue;
+    const o = at.o, p = G2S.pos.get(q);
+    if (p) { const d = Math.hypot(o.x - p.x, o.z - p.z); if (d < G2R.hop) g2D(q.team).km[at.ab ? 1 : 0] += d; }
     G2S.pos.set(q, { x: o.x, z: o.z });
     seat.forEach((w, s) => {
       if (!w) return;

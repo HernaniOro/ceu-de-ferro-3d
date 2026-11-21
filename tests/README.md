@@ -16,6 +16,7 @@ node tests/perception.js    # percepção da IA: campo de visão, tempo para not
 node tests/hot-loops.js     # os laços quentes do passo leem as listas por índice (cf-lag-2): a forma visita o mesmo que for...of (lista que cresce, encolhe, é trocada, com buracos, closures), as funções quentes a mantêm e o notice não cria closure por chamada; sem batalha, um segundo
 node tests/brain-honesty.js # cérebro P7 (honestidade): nenhuma seção CEREBRO lê S.men/S.units/S.bombs/S.planes fora das funções de percepção; um exercício com Proxy em S conta zero leituras dessas listas no cérebro; q.fd e A.fd pela crença, a emboscada conta o que vê, a granada só se vista, ouvida ou gritada, o tiro ouvido com erro de rumo e distância (HON.on 0 volta à verdade)
 node tests/infantry.js      # soldado: posturas, cobertura (mata e quina de parede), cada arma contra cada alvo, atropelamento
+node tests/tracers.js       # traçantes (cf-pol-armas): a metralhadora de esquadra (MG 42, BAR, M249, PKP) põe uma traçante a cada TRC.lmg balas, a do jogador e a da IA; o fuzil e a pistola nenhuma; e a mesma semente dá a mesma batalha com e sem elas (a conta não sorteia nada)
 node tests/folego.js        # fôlego infinito: a corrida (Shift+W) não cansa nem perde velocidade, o atirador de elite prende o fôlego quanto quiser sem tremer
 node tests/squads.js        # pelotões: caminhão, desembarque, comportamento, reação da outra IA
 node tests/pop-push.js      # o lado no teto de população ainda guarnece o assalto com uma esquadra de um posto dispensável (issue #35)

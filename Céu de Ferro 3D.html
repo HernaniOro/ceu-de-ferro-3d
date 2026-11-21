@@ -41425,12 +41425,17 @@ trnUi = (f => () => { f(); crewUi(); })(trnUi);
    bursts do not clip. veh: a ground vehicle's own sound (sndVeh): the engine through gears (one band of the speed each, the revs climbing in it and
    falling at the shift: f Hz from idle to the top, the gain g [idle, at full revs, more under the throttle], a cutoff lp opening with the revs),
    the tracks' clatter on a tracked hull (a link's knock hz times a second per m/s, at most max, through a band at f), the turret's servo
-   whining as it slews (f Hz from still to its top rate, vol at the top) and the road under the wheels (road: g and f by the speed) */
+   whining as it slews (f Hz from still to its top rate, vol at the top) and the road under the wheels (road: g and f by the speed). near: the
+   others heard (sndNear): the n nearest ground vehicles on the move within r m, each an engine through the same gears at vol, half at
+   ref m and duller away, a tracked hull's knocks within trk m; the n nearest aircraft within r m (a helicopter has its own, fx.rotor), a
+   jet's roar or a propeller's drone by its throttle, half at ref m, pitched by dop of its Doppler shift (within fac): a fly-by drops as it
+   passes. Each voice keeps whom it hears while that one stays among the nearest */
 const SND = {
   c: 343, ref: 80, air: 700, far: 2500,
   mine: { k: .2, gap: .03, late: .12 }, other: { k: .1, gap: .03, q: 24 },
   launch: { far: 3000, ref: 150 }, boom: { air: 1400 },
   crack: { r: 6, gap: .05, vol: .14 },
+  near: { veh: { n: 3, r: 450, ref: 30, trk: 120, vol: .7 }, air: { n: 2, r: 3000, ref: 300, vol: .9 }, dop: .6, fac: [.6, 1.6] },
   veh: { gears: 4, f: [28, 78], idle: .2, g: [.03, .025, .02], lp: [180, 650], trk: { hz: 2.2, max: 26, vol: .035, f: 850 }, tur: { f: [170, 420], vol: .02 }, road: { g: [.005, .02], f: [300, 700] } },
   v: { pistol: [.05, .6, 2600, 0, 0], smg: [.06, .65, 2200, 0, 0], rifle: [.075, 1, 1900, 140, .25], battle: [.11, 1.15, 1600, 110, .4], mg: [.085, 1.05, 1700, 120, .3],
     sniper: [.16, 1.4, 1300, 85, .55], hmg: [.11, 1.2, 1150, 80, .5], cannon: [.2, 1.4, 750, 55, .7] },
@@ -41553,6 +41558,55 @@ function sndCrack(P, dt) {
 }
 /* a ground vehicle's own sound (SND.veh), each frame; P null: the engine and the servo fall quiet. A.eng: a sawtooth and a square an octave
    under it through a low-pass, made on first use; A.vty: the turret's angle the frame before */
+/* the revs of a ground vehicle at its speed, through SND.veh's gears: 0 to 1, climbing in each gear and falling at the shift */
+function sndRpm(u) {
+  const V = SND.veh, k = clamp(Math.abs(u.sp || 0) / ((u.def && u.def.spd) || 20), 0, 1), G = V.gears, gp = Math.min(G - 1e-6, k * G), gi = Math.floor(gp), w = gp - gi;
+  return Math.max(V.idle, gi ? .55 + .45 * w : V.idle + (1 - V.idle) * w);
+}
+/* the others heard (SND.near), each frame; P null: all quiet. A.nv: the ground voices, A.na: the aircraft's, each { o, o2 | n, lp, g, u, trk } */
+function sndNear(P, dt, set, now) {
+  const N = SND.near, c = A.ctx, E = S.ear;
+  if (!A.nv) {
+    if (!P) return;
+    const voice = air => {
+      const g = c.createGain(), lp = c.createBiquadFilter(), o = c.createOscillator(), v = { g, lp, o, u: null, trk: 0 };
+      lp.type = 'lowpass'; g.gain.value = 0; o.connect(lp); lp.connect(g); g.connect(A.master); o.start();
+      if (air) { o.type = 'sawtooth'; const n = c.createBufferSource(), bp = c.createBiquadFilter(), ng = c.createGain(); n.buffer = A.noise; n.loop = true; bp.type = 'bandpass'; bp.Q.value = .7; ng.gain.value = 0; n.connect(bp); bp.connect(ng); ng.connect(g); n.start(); Object.assign(v, { bp, ng }); }
+      else { o.type = 'sawtooth'; const o2 = c.createOscillator(); o2.type = 'square'; o2.connect(lp); o2.start(); v.o2 = o2; }
+      return v;
+    };
+    A.nv = []; for (let i = 0; i < N.veh.n; i++) A.nv.push(voice(false));
+    A.na = []; for (let i = 0; i < N.air.n; i++) A.na.push(voice(true));
+  }
+  /* the nearest list of L within r of the ear that ok lets in, handed to the voices: one already on a wanted one keeps it */
+  const hand = (vs, L, r, ok) => {
+    const W = [];
+    if (P) for (const u of L) { if (u === P || u.dead || u.gone || !ok(u)) continue; const d = Math.hypot(u.x - E.x, u.y - E.y, u.z - E.z); if (d < r) W.push([d, u]); }
+    W.sort((a, b) => a[0] - b[0]); W.length = Math.min(W.length, vs.length);
+    const want = new Map(W.map(([d, u]) => [u, d]));
+    for (const v of vs) if (!want.has(v.u)) v.u = null;
+    for (const [, u] of W) if (!vs.some(v => v.u === u)) { const v = vs.find(q => !q.u); v.u = u; v.trk = 0; }
+    return want;
+  };
+  const V = SND.veh, wv = hand(A.nv, S.units || [], N.veh.r, u => u.def && Math.abs(u.sp || 0) > .3);
+  for (const v of A.nv) {
+    const u = v.u; if (!u) { set(v.g, 0); continue; }
+    const d = wv.get(u), at = sndAt(d, N.veh.ref) * (1 - d / N.veh.r), rpm = sndRpm(u), f = V.f[0] + (V.f[1] - V.f[0]) * rpm;
+    v.o.frequency.setTargetAtTime(f, now, .06); v.o2.frequency.setTargetAtTime(f / 2, now, .06); v.lp.frequency.setTargetAtTime(sndCut(V.lp[0] + (V.lp[1] - V.lp[0]) * rpm, d, SND.air, 90), now, .08);
+    set(v.g, N.veh.vol * (V.g[0] + V.g[1] * rpm) * at);
+    const sp = Math.abs(u.sp || 0), T = V.trk;
+    if (d < N.veh.trk && hullTracked(u)) { v.trk += dt * Math.min(T.max, sp * T.hz); if (v.trk >= 1) { v.trk %= 1; burst(.025, T.vol * Math.min(1, sp / 4) * at, sndCut(T.f, d, SND.air, 200) * (.85 + Math.random() * .3), 'bandpass', 0, 2); } }
+  }
+  const wa = hand(A.na, S.planes || [], N.air.r, u => !u.heli && u.def && !(u.y - hgt(u.x, u.z) < 2 && (u.V || 0) < 5));   // a helicopter is heard by fx.rotor; a plane parked on the field is quiet
+  for (const v of A.na) {
+    const u = v.u; if (!u) { set(v.g, 0); continue; }
+    const d = Math.max(1, wa.get(u)), at = sndAt(d, N.air.ref) * (1 - d / N.air.r), th = u.ctl ? clamp(u.ctl.thr || 0, 0, 1) : .7, kv = clamp((u.V || 0) / (u.def.vmax || 200), 0, 1.3);
+    const vr = u.v ? -((u.x - E.x) * u.v.x + (u.y - E.y) * u.v.y + (u.z - E.z) * u.v.z) / d * ASPD : 0, fac = clamp(SND.c / Math.max(1, SND.c - vr * N.dop), N.fac[0], N.fac[1]);
+    if (u.def.prop) { v.o.frequency.setTargetAtTime((52 + th * 38 + kv * 26) * fac, now, .1); v.ng.gain.setTargetAtTime(.25, now, .1); v.bp.frequency.setTargetAtTime((300 + kv * 500) * fac, now, .1); set(v.g, N.air.vol * (.03 + th * .03) * at); }
+    else { v.o.frequency.setTargetAtTime(40 * fac, now, .1); v.ng.gain.setTargetAtTime(1, now, .1); v.bp.frequency.setTargetAtTime((450 + th * 700 + kv * 500) * fac, now, .1); set(v.g, N.air.vol * (.05 + th * .08) * at); }
+    v.lp.frequency.setTargetAtTime(sndCut(u.def.prop ? 1400 : 3000, d, SND.air, 150), now, .1);
+  }
+}
 function sndVeh(P, dt, set, now) {
   const V = SND.veh, c = A.ctx;
   if (!A.eng) {
@@ -41563,8 +41617,7 @@ function sndVeh(P, dt, set, now) {
     A.eng = { o, o2, lp, g }; A.tur = { o: t, g: tg }; A.trk = 0; A.vty = null;
   }
   if (!P) { set(A.eng.g, 0); set(A.tur.g, 0); A.vty = null; return; }
-  const d = P.def, sp = Math.abs(P.sp || 0), k = clamp(sp / (d.spd || 20), 0, 1), G = V.gears, gp = Math.min(G - 1e-6, k * G), gi = Math.floor(gp), w = gp - gi;
-  const rpm = Math.max(V.idle, gi ? .55 + .45 * w : V.idle + (1 - V.idle) * w), th = Math.abs(P.ctl.drive || 0), f = V.f[0] + (V.f[1] - V.f[0]) * rpm;
+  const d = P.def, sp = Math.abs(P.sp || 0), k = clamp(sp / (d.spd || 20), 0, 1), rpm = sndRpm(P), th = Math.abs(P.ctl.drive || 0), f = V.f[0] + (V.f[1] - V.f[0]) * rpm;
   A.eng.o.frequency.setTargetAtTime(f, now, .06); A.eng.o2.frequency.setTargetAtTime(f / 2, now, .06); A.eng.lp.frequency.setTargetAtTime(V.lp[0] + (V.lp[1] - V.lp[0]) * rpm, now, .08);
   set(A.eng.g, V.g[0] + V.g[1] * rpm + V.g[2] * th);
   set(A.jet.g, V.road.g[0] + V.road.g[1] * k); A.jet.bp.frequency.setTargetAtTime(V.road.f[0] + (V.road.f[1] - V.road.f[0]) * k, now, .1);
@@ -41578,6 +41631,7 @@ function audioTick(dt) {
   const P = S.my, live = playMode === 'play' && !paused && P && !P.dead && !S.over, now = A.ctx.currentTime;
   const set = (g, v) => g.gain.setTargetAtTime(v, now, .08);
   if (!live || !P.kind || P.man) sndVeh(null, dt, set, now);   // the engine and the servo quiet off a vehicle (a soldier's kind is inf)
+  sndNear(live && A.on ? P : null, dt, set, now);
   if (!live) { set(A.prop.g, 0); set(A.jet.g, 0); set(A.siren.g, 0); return; }
   const k = P.kind ? 0 : P.V / P.def.vmax, th = P.ctl.thr;
   if (P.man) { set(A.prop.g, 0); set(A.jet.g, .004); if (A.on) { sndHands(P); sndCrack(P, dt); } }

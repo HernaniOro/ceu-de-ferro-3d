@@ -7678,7 +7678,7 @@ function smoked(ax, ay, az, bx, by, bz) {
 function addSmoke(x, y, z, r, h, L) {
   r = r || SMOKE.r; S.smokes.push({ x, y, z, t0: S.t, r, h: h || SMOKE.h, L: L || SMOKE.life });
   for (let i = 0; i < 8; i++) { const a = i * TAU / 8; puff(x + Math.cos(a) * r * .7, y + 3, z + Math.sin(a) * r * .7, 'flash', .8); }
-  fx.launch(false);
+  fx.launch(false, { x, y, z });
 }
 /* a vehicle fires a salvo of its launchers; its owner tells the room */
 function popSmoke(u) {
@@ -8062,7 +8062,7 @@ function fireGun(p) {
   const dx = f.x + rand(-s, s), dy = f.y + rand(-s, s), dz = f.z + rand(-s, s);
   p.gcool = g.rate; p.ammo--; p.shotT = S.t;
   S.bullets.push({ x: p.x + f.x * L, y: p.y + f.y * L, z: p.z + f.z * L, vx: p.v.x + dx * g.spd, vy: p.v.y + dy * g.spd, vz: p.v.z + dz * g.spd, life: g.life || 1.5, team: p.team, dmg: g.dmg, ap: g.ap, by: p, tr: p.def.prop ? 0 : 1, fr: g.fr, cal: calOf(g) });
-  fx.shot(p === S.my, p);
+  fx.shot(p === S.my, p, g);
 }
 /* see: the lock needs the seeker's line (seekLine, smoke included); see 2: a radar's, the ground and what hides only. LOCK.blk: see above */
 function lockOn(p, list, range, cone, see) {
@@ -8091,7 +8091,7 @@ function useOrd(p, i) {
   else if (o.k === 'rocket') { p.ocool[i] = .14; const v = p.V + 450, s = .008; S.bombs.push(Object.assign(b, { k: 'rocket', vx: (p.f.x + rand(-s, s)) * v, vy: (p.f.y + rand(-s, s)) * v, vz: (p.f.z + rand(-s, s)) * v, life: 4 })); }
   else if (o.k === 'agm') { p.ocool[i] = .8; S.missiles.push(MSL.arm(Object.assign(b, { gnd: true, target: lockOn(p, S.units, 6500, .8, true) }), p.f, p)); }
   else { p.ocool[i] = .7; S.missiles.push(MSL.arm(Object.assign(b, { target: MSL.pick(p, o, !!p.ai) }), p.f, p)); }
-  if (o.k !== 'bomb') fx.launch(p === S.my);
+  if (o.k !== 'bomb') fx.launch(p === S.my, p);
   return true;
 }
 /* a release by the player or by an AI plane hosted here: online, the others replay it on their copy of this plane, with the same missile target */
@@ -8488,7 +8488,7 @@ function lob(u, w, x, y, z, vx, vy, vz) {
 function launchSam(u, w, t) {
   const m = MSL.arm({ x: u.x, y: u.y + 5, z: u.z, target: t, o: w, team: u.team, by: u, sam: true }, t ? vnorm({ x: t.x - u.x, y: t.y - u.y + dist(t, u) * .2, z: t.z - u.z }) : u.f, u);
   if (t && t.gnd && !u.net && Math.random() > (u.ai ? GAI.aa.msl.pk : w.mpk)) m.drop = S.t + rand(.4, 1.2);   // the lock on a missile will not hold
-  S.missiles.push(m); fx.launch(u === S.my); return m;
+  S.missiles.push(m); fx.launch(u === S.my, u); return m;
 }
 /* fire(u, w, m, d): from muzzle m along d, returns the projectile. relay: a discrete shot its owner (the player, or the host for an AI vehicle) announces online; a ghost only fires those when told */
 const ARMK = {
@@ -8501,7 +8501,7 @@ const ARMK = {
   }, relay: (u, i, b) => Net.shot(u, [b.x, b.y, b.z], [b.vx, b.vy, b.vz], b.smk) },
   gun: { fire(u, w, m, d) {
     const b = { x: m.x, y: m.y, z: m.z, vx: d.x * w.spd, vy: d.y * w.spd, vz: d.z * w.spd, life: w.life, team: u.team, dmg: w.dmg, ap: w.ap, by: u, tr: 2, am: w.am, cal: calOf(w) };
-    S.bullets.push(b); fx.shot(u === S.my, u); return b;
+    S.bullets.push(b); fx.shot(u === S.my, u, w); return b;
   } },
   flak: { fire(u, w, m, d) {   // the fuse is set for where the nearest plane on the gun line will be when the round gets there
     let R = u.ctl.fuse;
@@ -8512,7 +8512,7 @@ const ARMK = {
   } },
   rkt: { fire(u, w, m, d) {   // an unguided rocket from a vehicle's pod: the aircraft's rocket (S.bombs k rocket), which bursts on what it strikes
     const b = { k: 'rocket', x: m.x, y: m.y, z: m.z, vx: d.x * w.spd, vy: d.y * w.spd, vz: d.z * w.spd, o: w, team: u.team, by: u, life: w.life || 4 };
-    S.bombs.push(b); puff(m.x, m.y, m.z, 'flash', .8); puff(m.x - d.x * 2, m.y, m.z - d.z * 2, 'smoke', 1); fx.launch(u === S.my); return b;
+    S.bombs.push(b); puff(m.x, m.y, m.z, 'flash', .8); puff(m.x - d.x * 2, m.y, m.z - d.z * 2, 'smoke', 1); fx.launch(u === S.my, u); return b;
   } },
   sam: { fire: (u, w) => (u.ctl.lock && !u.ctl.lock.dead && !u.ctl.lock.gone ? launchSam(u, w, u.ctl.lock) : null), relay: (u, i, m) => Net.ord(u, i, m) }
 };
@@ -9883,14 +9883,14 @@ const TOSS = ['heat', 'nade', 'smk'];
 const GRN = { fuse: 3.6, e: .32, f: .6, roll: 2.4, slope: .6, r: .08, step: 1.2, car: [2.4, 2.6] };
 function lobbed(m, k, o, x, y, z, vx, vy, vz) { const b = { k, x, y, z, vx, vy, vz, o, team: m.team, by: m, life: 8 }; S.bombs.push(b); return b; }
 const MSHOT = {
-  heat(m, w, e, d) { fx.launch(m === S.my); puff(e.x - d.x * 2, e.y, e.z - d.z * 2, 'dust', 1.2); return lobbed(m, 'heat', w, e.x + d.x, e.y + d.y, e.z + d.z, d.x * w.spd, d.y * w.spd, d.z * w.spd); },
+  heat(m, w, e, d) { fx.launch(m === S.my, m); puff(e.x - d.x * 2, e.y, e.z - d.z * 2, 'dust', 1.2); return lobbed(m, 'heat', w, e.x + d.x, e.y + d.y, e.z + d.z, d.x * w.spd, d.y * w.spd, d.z * w.spd); },
   atgm(m, w, e, d, t) {
     const o = MSL.arm({ x: e.x + d.x, y: e.y + .3, z: e.z + d.z, gnd: true, target: t, o: w, team: m.team, by: m }, vnorm({ x: d.x, y: d.y + .35, z: d.z }), m);
-    S.missiles.push(o); fx.launch(m === S.my); return o;
+    S.missiles.push(o); fx.launch(m === S.my, m); return o;
   },
   sam(m, w, e, d, t) {
     const o = MSL.arm({ x: e.x + d.x, y: e.y + .3, z: e.z + d.z, target: t, o: w, team: m.team, by: m, sam: true }, vnorm({ x: d.x, y: d.y + .1, z: d.z }), m);
-    S.missiles.push(o); fx.launch(m === S.my); return o;
+    S.missiles.push(o); fx.launch(m === S.my, m); return o;
   }
 };
 /* the target a guided special has: the nearest its line inside the cone, in range and in clear sight; ready once held for lockT s */
@@ -9915,7 +9915,7 @@ function manFire(m, a) {
   const s = (w.sp * STANCE[m.st].sp * (c.ads ? MAN.ads.sp : 1) * (moving ? MAN.move : 1) * (1 + m.wa * MAN.shake) + c.sp) * (m.sup > S.t ? SUP.sp : 1);
   a.mag--; a.cool = w.rate; a.t = m.shotT = S.t;
   S.bullets.push({ x: e.x + f.x, y: e.y + f.y - .12, z: e.z + f.z, vx: (f.x + rand(-s, s)) * w.spd, vy: (f.y + rand(-s, s)) * w.spd, vz: (f.z + rand(-s, s)) * w.spd, life: 1.3, team: m.team, dmg: w.dmg, ap: 0, sa: 1, by: m, tr: 0, cal: calOf(w) });   // cal: a post's heavy gun can strike a missile (MINT)
-  fx.shot(m === S.my, m);
+  fx.shot(m === S.my, m, w);
 }
 /* a hand grenade (k 1) or a smoke grenade (2), thrown along the aim and a little up */
 function toss(m, k) {
@@ -12297,7 +12297,7 @@ function snipe(m, a) {
   const h = Math.atan2(-f.z, f.x) + W.x + rand(-s, s), p = Math.asin(clamp(f.y, -1, 1)) + W.y + rand(-s, s), cp = Math.cos(p), dx = Math.cos(h) * cp, dy = Math.sin(p), dz = -Math.sin(h) * cp;
   a.mag--; a.cool = w.rate; a.t = m.shotT = S.t;
   (S.slugs || (S.slugs = [])).push({ x: e.x + dx * .6, y: e.y + dy * .6, z: e.z + dz * .6, vx: dx * w.spd, vy: dy * w.spd, vz: dz * w.spd, life: SNIPE.life, team: m.team, o: w, by: m, t: 0 });
-  fx.shot(m === S.my, m);
+  fx.shot(m === S.my, m, w);
 }
 /* an anti-materiel round on a vehicle: the part on its line and the face it came through, like any hit that goes in */
 function amHit(u, b, x, y, z) {
@@ -12796,7 +12796,7 @@ const Net = {
       g = g || Net.ghosts.get(m.from);
       const w = g && g.net && g.man && !g.dead && (m.k === 1 ? MAN.nade : m.k === 2 ? MAN.smk : g.arms[1] && g.arms[1].d.k === (m.k ? 'mort' : 'heat') && g.arms[1].d);
       if (w && m.k > 2 && Array.isArray(m.p) && Array.isArray(m.v)) mortRound(g, w, m.k === 4, m.p[0], m.p[1], m.p[2], m.v[0], m.v[1], m.v[2]);
-      else if (w && Array.isArray(m.p) && Array.isArray(m.v)) { if (m.rb && m.k === 1) nadeTaken(m.p[0], m.p[2]); const b = lobbed(g, TOSS[m.k], w, m.p[0], m.p[1], m.p[2], m.v[0], m.v[1], m.v[2]); if (m.f && m.k === 1) b.fz = S.t + (Number.isFinite(m.fl) ? clamp(m.fl, 0, GRN.fuse + 1) : GRN.fuse); if (!m.k) fx.launch(false); }
+      else if (w && Array.isArray(m.p) && Array.isArray(m.v)) { if (m.rb && m.k === 1) nadeTaken(m.p[0], m.p[2]); const b = lobbed(g, TOSS[m.k], w, m.p[0], m.p[1], m.p[2], m.v[0], m.v[1], m.v[2]); if (m.f && m.k === 1) b.fz = S.t + (Number.isFinite(m.fl) ? clamp(m.fl, 0, GRN.fuse + 1) : GRN.fuse); if (!m.k) fx.launch(false, g); }
     },
     aitoss(m) { Net.rx.toss(m, Net.ai.get(m.id)); },
     ord(m) { Net.fireAs(Net.ghosts.get(m.from), m.i, m.target, m.m, m.tm); },
@@ -14023,7 +14023,7 @@ function heliGun(p) {
   const g = p.def.gun, a = p.gf, m = heliMuzzle(p), s = g.sp + (p.ai ? HAI.sp : 0) + p.mod.disp * DMG.disp;
   p.gc = g.rate; p.ammo--; p.shotT = S.t;
   S.bullets.push({ x: m.x, y: m.y, z: m.z, vx: p.v.x + (a.x + rand(-s, s)) * g.spd, vy: p.v.y + (a.y + rand(-s, s)) * g.spd, vz: p.v.z + (a.z + rand(-s, s)) * g.spd, life: g.life, team: p.team, dmg: g.dmg, ap: g.ap, by: p, tr: 1, fr: g.fr, cal: calOf(g) });
-  fx.shot(p === S.my, p);
+  fx.shot(p === S.my, p, g);
 }
 /* a door gunner by himself: the nearest enemy soldier or soft vehicle one of the two guns bears on */
 function doorPick(p) {
@@ -41366,14 +41366,37 @@ function crewUi() {
   BRIEF.inf = (d, o) => bi(d, o) + ' Com E você entra em carro, caminhão ou blindado sobre rodas aliado que esteja estacionado, ao volante ou na arma.';
 }
 trnUi = (f => () => { f(); crewUi(); })(trnUi);
-/* ---------- sound ---------- */
-const A = { ctx: null, on: true, last: 0, beep: 0 };
+/* ---------- sound ----------
+   All of it made here from noise and tones, no sound files. SND: what a shot sounds like and how far it carries. A shot's voice (SND.v, picked
+   by shotVoice from the weapon's calibre and kind) is a burst of noise [dur s, vol, under a cutoff of f Hz] with a low thump under the heavier
+   ones [lo Hz, lv of the vol]. Away from the ear a sound is quieter (half at ref m), duller (the cutoff halves at air m: the air takes the highs
+   of what is far) and late (c m/s: what is seen at d m is heard d / c s after it). mine: the player's own shots, k their gain, one every
+   gap s (two in one slow frame: the second a gap later, up to late s behind), never held back by anyone else's (they were: one shot of the
+   AI's 55 ms before took the player's); other: everyone else's,
+   gap s apart and at most q waiting to be heard. far: m past which a shot is not heard; launch, boom: the same for a rocket's or missile's
+   whoosh (which was as loud across the map as beside the ear) and a burst. crack: the round of a foe passing within r m of the soldier's
+   head snaps, at most one every gap s. hand: the soldier's own hands, [after s, dur s, vol, f Hz, Q] noises through a band: a magazine
+   out and in, a bolt worked, an empty click, a weapon swapped, a launcher loaded. The master runs through a compressor, so that a battle's
+   bursts do not clip */
+const SND = {
+  c: 343, ref: 80, air: 700, far: 2500,
+  mine: { k: .2, gap: .03, late: .12 }, other: { k: .1, gap: .03, q: 24 },
+  launch: { far: 3000, ref: 150 }, boom: { air: 1400 },
+  crack: { r: 6, gap: .05, vol: .14 },
+  v: { pistol: [.05, .6, 2600, 0, 0], smg: [.06, .65, 2200, 0, 0], rifle: [.075, 1, 1900, 140, .25], battle: [.11, 1.15, 1600, 110, .4], mg: [.085, 1.05, 1700, 120, .3],
+    sniper: [.16, 1.4, 1300, 85, .55], hmg: [.11, 1.2, 1150, 80, .5], cannon: [.2, 1.4, 750, 55, .7] },
+  hand: { out: [[0, .035, .07, 2800, 2], [.07, .05, .05, 900, 1.2]], in: [[0, .03, .09, 2400, 2], [.15, .04, .08, 3600, 3]], bolt: [[.38, .04, .07, 2200, 2], [.55, .035, .08, 3000, 2]],
+    dry: [[0, .02, .06, 3800, 4]], swap: [[0, .12, .035, 700, .7], [.1, .025, .05, 2600, 2]], tube: [[0, .08, .06, 600, 1.5], [.25, .05, .07, 1800, 2]] }
+};
+const A = { ctx: null, on: true, lm: -9, oq: [], ck: -9, beep: 0, h: null };
 function audioInit() {
   if (A.ctx) { if (A.ctx.state === 'suspended') A.ctx.resume(); return; }
   try {
     const AC = window.AudioContext || window.webkitAudioContext; if (!AC) return;
     const c = A.ctx = new AC();
-    A.master = c.createGain(); A.master.gain.value = A.on ? .6 : 0; A.master.connect(c.destination);
+    A.master = c.createGain(); A.master.gain.value = A.on ? .6 : 0;
+    if (c.createDynamicsCompressor) { const k = A.comp = c.createDynamicsCompressor(); k.threshold.value = -14; k.knee.value = 12; k.ratio.value = 4; k.attack.value = .003; k.release.value = .25; A.master.connect(k); k.connect(c.destination); }
+    else A.master.connect(c.destination);
     const buf = c.createBuffer(1, c.sampleRate, c.sampleRate), ch0 = buf.getChannelData(0);
     for (let i = 0; i < ch0.length; i++) ch0[i] = Math.random() * 2 - 1;
     A.noise = buf;
@@ -41384,21 +41407,61 @@ function audioInit() {
     n.connect(bp); bp.connect(g); g.connect(A.master); n.start(); A.jet = { bp, g };
   } catch (e) { A.ctx = null; }
 }
-function burst(dur, vol, freq, type) {
+/* a burst of noise dur s long through a filter at freq (Q q), starting at the context's time at (now when not given) */
+function burst(dur, vol, freq, type, at, q) {
   if (!A.ctx || !A.on || vol <= .002) return;
-  const c = A.ctx, n = c.createBufferSource(), f = c.createBiquadFilter(), g = c.createGain(), t = c.currentTime;
-  n.buffer = A.noise; f.type = type || 'lowpass'; f.frequency.value = freq;
+  const c = A.ctx, n = c.createBufferSource(), f = c.createBiquadFilter(), g = c.createGain(), t = Math.max(c.currentTime, at || 0);
+  n.buffer = A.noise; f.type = type || 'lowpass'; f.frequency.value = freq; if (q) f.Q.value = q;
   g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(.001, t + dur);
   n.connect(f); f.connect(g); g.connect(A.master); n.start(t, Math.random() * .5, dur + .05);
 }
-fx.shot = (mine, p) => {
+/* a low thump under a heavy shot: a tone falling from 1.6 to 0.6 times f over dur s */
+function thump(f, dur, vol, at) {
+  if (!A.ctx || !A.on || vol <= .002) return;
+  const c = A.ctx, o = c.createOscillator(), g = c.createGain(), t = Math.max(c.currentTime, at || 0);
+  o.type = 'sine'; o.frequency.setValueAtTime(f * 1.6, t); o.frequency.exponentialRampToValueAtTime(f * .6, t + dur);
+  g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(.001, t + dur);
+  o.connect(g); g.connect(A.master); o.start(t); o.stop(t + dur + .05);
+}
+const sndAt = (d, ref) => 1 / (1 + d / ref), sndCut = (f, d, air, lo) => Math.max(lo, f / (1 + d / air));
+/* the voice of a shot: from the calibre (a cannon, a heavy machine gun), then the kind (a scoped rifle, a squad's machine gun, a pistol or
+   a sub-machine gun by its slow round, a bolt or battle rifle by its slow rate), a rifle on foot and a machine gun on a vehicle or aircraft */
+function shotVoice(w, p) {
+  if (!w) return p && p.man ? 'rifle' : 'mg';
+  const c = calOf(w);
+  if (c >= 20) return 'cannon';
+  if (w.snp) return 'sniper';
+  if (c >= 12) return 'hmg';
+  if (w.lmg) return 'mg';
+  if (w.spd && w.spd < 500) return w.auto ? 'smg' : 'pistol';
+  if (p && !p.man) return 'mg';
+  return w.rate >= .4 && !w.auto ? 'battle' : 'rifle';
+}
+fx.shot = (mine, p, w) => {
   if (!A.ctx || playMode !== 'play') return;
-  const t = A.ctx.currentTime; if (t - A.last < (mine ? .055 : .09)) return; A.last = t;
-  const d = dist(p, S.ear); if (d > 2500) return;
-  burst(.07, (mine ? .2 : .1) * (1 - d / 2500), 1700);
+  const now = A.ctx.currentTime, d = mine ? 0 : dist(p, S.ear); if (d > SND.far) return;
+  const M = mine ? SND.mine : SND.other; let at = now + d / SND.c;
+  if (mine) { at = Math.max(now, A.lm + M.gap); if (at - now > M.late) return; A.lm = at; }   // two in one slow frame: the second a gap later, not dropped
+  else {
+    A.oq = A.oq.filter(t => t > now - M.gap);
+    if (A.oq.length >= M.q || A.oq.some(t => Math.abs(t - at) < M.gap)) return;
+    A.oq.push(at);
+  }
+  const v = SND.v[shotVoice(w, p)], k = M.k * v[1] * (mine ? 1 : sndAt(d, SND.ref) * (1 - d / SND.far));
+  burst(v[0] * (1 + d / 4000), k, sndCut(v[2], d, SND.air, 250), 'lowpass', at);
+  if (v[3]) thump(v[3], v[0] * 1.6, k * v[4], at);
 };
-fx.boom = (r, d) => { if (playMode === 'play') burst(.4 + r / 60, clamp(r / 30, .12, .9) * (1 - d / 3500), 420); };
-fx.launch = mine => { if (playMode === 'play') burst(.6, mine ? .25 : .06, 1500, 'highpass'); };
+fx.boom = (r, d) => {
+  if (playMode !== 'play' || !A.ctx) return;
+  const at = A.ctx.currentTime + d / SND.c, k = clamp(r / 30, .12, .9) * (1 - d / 3500);
+  burst(.4 + r / 60, k, sndCut(420, d, SND.boom.air, 120), 'lowpass', at);
+  if (r >= 12) thump(48, .5 + r / 90, k * .45, at);
+};
+fx.launch = (mine, p) => {
+  if (playMode !== 'play' || !A.ctx) return;
+  const L = SND.launch, d = mine ? 0 : p ? dist(p, S.ear) : L.ref; if (d > L.far) return;
+  burst(.6, mine ? .25 : .12 * sndAt(d, L.ref) * (1 - d / L.far), sndCut(1500, d, SND.air, 300), 'highpass', A.ctx.currentTime + d / SND.c);
+};
 fx.whistle = (t, d) => {   // a falling shell: a tone that drops and swells until the burst
   if (!A.ctx || !A.on || playMode !== 'play') return;
   const o = A.ctx.createOscillator(), g = A.ctx.createGain(), now = A.ctx.currentTime, v = .16 * (1 - d / HOW.hear);
@@ -41406,13 +41469,46 @@ fx.whistle = (t, d) => {   // a falling shell: a tone that drops and swells unti
   g.gain.setValueAtTime(.001, now); g.gain.exponentialRampToValueAtTime(Math.max(.002, v), now + t * .9); g.gain.linearRampToValueAtTime(0, now + t);
   o.connect(g); g.connect(A.master); o.start(now); o.stop(now + t + .05);
 };
+/* the soldier's own hands: a noise of SND.hand */
+function clack(k) { const now = A.ctx.currentTime; for (const [t, dur, vol, f, q] of SND.hand[k]) burst(dur, vol, f, 'bandpass', now + t, q); }
+/* what the player's soldier does with the weapon in hand, heard: a reload begun and done, a bolt worked after a shot, the trigger on an
+   empty weapon, a swap. A.h: what was seen the frame before */
+function sndHands(P) {
+  const a = P.arms && P.arms[P.w]; if (!a) return;
+  if (!A.h || A.h.p !== P) A.h = { p: P, a: null, rl: false, fire: false, sw: P.swT, t: a.t };   // a new soldier starts from what he holds
+  const H = A.h, w = a.d, rl = a.rl > 0, same = H.a === a;
+  if (rl && !(same && H.rl)) clack(w.k ? 'tube' : 'out');
+  else if (!rl && same && H.rl && a.mag > 0 && !w.k) clack('in');
+  if (same && a.t !== H.t && a.mag > 0 && !w.k && !w.auto && w.rate >= 1.2) clack('bolt');
+  if (P.ctl.fire && !H.fire && a.mag <= 0 && !rl && !(a.res > 0)) clack('dry');
+  if (P.swT !== H.sw && P.swT > S.t) clack('swap');
+  H.a = a; H.rl = rl; H.fire = !!P.ctl.fire; H.sw = P.swT; H.t = a.t;
+}
+/* a foe's round passing within SND.crack.r m of the soldier's head this frame: its snap, louder the nearer, once a round */
+function sndCrack(P, dt) {
+  const C = SND.crack, now = A.ctx.currentTime; if (now - A.ck < C.gap) return;
+  const e = manEye(P), R2 = C.r * C.r, back = Math.max(dt, 1 / 30);
+  for (const L of [S.bullets, S.slugs]) if (L) for (const b of L) {
+    if (b.cr || b.team === P.team || b.by === P || b.gone) continue;
+    const vx = b.vx * back, vy = b.vy * back, vz = b.vz * back, x0 = b.x - vx, y0 = b.y - vy, z0 = b.z - vz;
+    if (Math.abs(e.x - b.x) > C.r + Math.abs(vx) || Math.abs(e.z - b.z) > C.r + Math.abs(vz)) continue;
+    const l2 = vx * vx + vy * vy + vz * vz || 1, t = clamp(((e.x - x0) * vx + (e.y - y0) * vy + (e.z - z0) * vz) / l2, 0, 1);
+    const dx = x0 + vx * t - e.x, dy = y0 + vy * t - e.y, dz = z0 + vz * t - e.z, d2 = dx * dx + dy * dy + dz * dz;
+    if (d2 > R2) continue;
+    b.cr = 1; A.ck = now;
+    const k = C.vol * (1 - Math.sqrt(d2) / C.r) + .02, fast = l2 / (back * back) > 340 * 340;
+    if (fast) { burst(.025, k, 3200, 'highpass'); burst(.05, k * .35, 1100, 'bandpass', now + .01, 1.5); }
+    else burst(.14, k * .6, 1300, 'bandpass', now, 2);
+    return;
+  }
+}
 function audioTick(dt) {
   if (!A.ctx) return;
   const P = S.my, live = playMode === 'play' && !paused && P && !P.dead && !S.over, now = A.ctx.currentTime;
   const set = (g, v) => g.gain.setTargetAtTime(v, now, .08);
   if (!live) { set(A.prop.g, 0); set(A.jet.g, 0); set(A.siren.g, 0); return; }
   const k = P.kind ? 0 : P.V / P.def.vmax, th = P.ctl.thr;
-  if (P.man) { set(A.prop.g, 0); set(A.jet.g, .004); }
+  if (P.man) { set(A.prop.g, 0); set(A.jet.g, .004); if (A.on) { sndHands(P); sndCrack(P, dt); } }
   else if (P.kind) { A.prop.o.frequency.setTargetAtTime(36 + Math.abs(P.sp) * 2.6, now, .1); set(A.prop.g, .035 + Math.abs(P.ctl.drive) * .02); set(A.jet.g, .006); }
   else if (P.def.prop) { A.prop.o.frequency.setTargetAtTime(52 + th * 38 + k * 26, now, .1); set(A.prop.g, .03 + th * .03); set(A.jet.g, .01 + k * .03); A.jet.bp.frequency.setTargetAtTime(300 + k * 500, now, .1); }
   else { A.jet.bp.frequency.setTargetAtTime(450 + th * 700 + k * 500, now, .1); set(A.jet.g, .05 + th * .08 + (P.ab ? .07 : 0)); set(A.prop.g, 0); }

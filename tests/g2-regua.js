@@ -8,7 +8,7 @@
       analytics does not count its events), it raised no error, both sides have every counter and combats went out, and the two runs with it
       on give the same g2 events to the last digit (the yardstick is stable: the same seed, the same numbers).
    3. tools/balance.js: the section over the two runs with it on, with a reference column, and --combates; and the server takes the kinds of
-      event the measurements send (g2, g2c, and the brain's cb: a batch with an unknown kind was dropped whole).
+      event the measurements send (g2, g2c, and the brain's cb: an event of an unknown kind is left out, cf-pol-fluxos).
    MIN the clock of the match in minutes (default 2), SEED (default 3); SECS=0 skips parts 2 and 3. Some minutes on a quiet machine */
 const fs = require('fs'), path = require('path'), os = require('os');
 const H = require('./harness'), { ok, done } = H;

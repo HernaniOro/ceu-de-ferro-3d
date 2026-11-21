@@ -12,7 +12,7 @@ O número que este pacote tem de mostrar ("pronto quando"): a régua é estável
   - `R.g2` na revisão.
   - `g2Sum` e `g2Rows`: as medidas e as linhas da tabela.
 - `tools/balance.js`: a seção "General 2: régua dos exemplos", e as opções `--ref` (coluna de referência), `--g2 0|1` (o interruptor) e `--combates <arquivo>`.
-- `server.js`: `ANA.kinds` aceita `g2`, `g2c` e `cb`. Um lote com um tipo desconhecido era jogado fora inteiro, e o `cb` da medição do cérebro (P6) já vinha sendo perdido assim online e no POST de uma partida local.
+- `server.js`: `ANA.kinds` aceita `g2` e `g2c`. Sem eles, o servidor descarta esses eventos: desde o `cf-pol-fluxos` ele filtra o evento de tipo desconhecido; antes, jogava fora o lote inteiro. O `cb` da medição do cérebro, o main já tinha acrescentado.
 - `tests/g2-regua.js` (também em `tests/all.sh` e `tests/README.md`).
 - `tools/ref/general2-base.json` e `tools/ref/general2-base.md`: a régua do main de hoje.
 
@@ -48,7 +48,6 @@ O número que este pacote tem de mostrar ("pronto quando"): a régua é estável
 6. **Online.** Não foi jogado numa sala de verdade. Ficou de fora:
    - o anfitrião mandando `g2` e `g2c` ao servidor e o servidor gravando;
    - o `rep` com `R.g2` abaixo dos 16 KB numa partida longa (numa partida de 1 min deu 11.476 caracteres, contra 9.840 sem a régua);
-   - o conserto do `cb`.
 
    Como testar: `tests/ana-online.js` com uma partida que tenha combates e eventos `cb`, e uma sala real de 30 min.
 7. **Três lados.** Não foi jogado (a sede HS2 dos Insurgentes, `anaN() = 3`). Como testar: `node tools/balance.js --torneio 2 --lados 3 --min 10 --nobudget`.

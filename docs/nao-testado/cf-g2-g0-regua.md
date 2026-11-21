@@ -47,7 +47,7 @@ O número que este pacote tem de mostrar ("pronto quando"): a régua é estável
    - Como testar: no G2, comparar a distribuição de duração e de tamanho com o que a tela mostra, e o acerto do vencedor.
 6. **Online.** Não foi jogado numa sala de verdade. Ficou de fora:
    - o anfitrião mandando `g2` e `g2c` ao servidor e o servidor gravando;
-   - o `rep` com `R.g2` abaixo dos 16 KB numa partida longa (numa partida de 1 min deu 11.476 caracteres, contra 9.840 sem a régua);
+   - o `rep` com `R.g2` abaixo dos 16 KB numa partida longa (numa partida de 1 min deu 11.476 caracteres, contra 9.840 sem a régua).
 
    Como testar: `tests/ana-online.js` com uma partida que tenha combates e eventos `cb`, e uma sala real de 30 min.
 7. **Três lados.** Não foi jogado (a sede HS2 dos Insurgentes, `anaN() = 3`). Como testar: `node tools/balance.js --torneio 2 --lados 3 --min 10 --nobudget`.

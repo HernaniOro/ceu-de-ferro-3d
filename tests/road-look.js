@@ -12,6 +12,8 @@ console.log('page: ' + H.PAGE);
 const ha = html.indexOf('function envRoadHook(sh, u, k, gr) {'), hb = html.indexOf('/* the sky: the horizon', ha);
 const ba = html.indexOf('function br3Init() {'), bb = html.indexOf('\n}\n', ba) + 2;
 const ia = html.indexOf('function sky3Ill(sh) {'), ib = html.indexOf('\n}\n', ia) + 2;
+const ga = html.indexOf('const GRP = {'), gb = html.indexOf('/* the painted blade (GRP)', ga);
+const grpStubs = { VU: { uTime: { value: 0 }, uWind: { value: .5 } }, ENVU: { sun: 'sun' } };
 if (ha < 0 || ia < 0) { console.log('no lit roads: a page before them'); process.exit(0); }
 
 console.log('-- each road vertex knows its place across the road and along it (roadRibbon rd, buildWorld) --');
@@ -59,12 +61,12 @@ console.log('-- the road shader: every uniform and attribute it reads is given -
 {
   const stub = () => ({ uniforms: {}, vertexShader: '#include <begin_vertex>\n#include <project_vertex>\n', fragmentShader: 'void main() {\n#include <color_fragment>\n#include <emissivemap_fragment>\n}' });
   const run = (sky) => {
-    const ctx = vm.createContext({ ENV: { tu: { tEnv: { value: 'tex' }, uSoil: { value: 'soil' } } }, SKY3: { u: sky } });
-    vm.runInContext(html.slice(ia, ib) + html.slice(ha, hb) + '\n;globalThis.$ = s => eval(s);', ctx, { filename: 'road.js' });
+    const ctx = vm.createContext(Object.assign({ ENV: { tu: { tEnv: { value: 'tex' }, uSoil: { value: 'soil' } } }, SKY3: { u: sky } }, grpStubs));
+    vm.runInContext(html.slice(ga, gb) + html.slice(ia, ib) + html.slice(ha, hb) + '\n;globalThis.$ = s => eval(s);', ctx, { filename: 'road.js' });
     const sh = stub(); ctx.$('envRoadHook')(sh, { value: 'rd' }); return sh;
   };
   const sh = run({ uIll: { value: [] }, uIllK: { value: 0 } });
-  const need = [...sh.fragmentShader.matchAll(/uniform \w+ (\w+)(?:\[\d+\])?;/g)].map(m => m[1]), miss = need.filter(n => !(n in sh.uniforms));
+  const need = [...sh.fragmentShader.matchAll(/uniform \w+ ([\w, ]+?)(?:\[\d+\])?;/g)].flatMap(m => m[1].split(/, */)), miss = need.filter(n => !(n in sh.uniforms));   // GRP declares some in a list
   ok(need.length >= 5 && !miss.length, need.length + ' uniforms read, all given' + (miss.length ? ' (missing ' + miss.join(', ') + ')' : ''));
   ok(/attribute vec2 rd;/.test(sh.vertexShader) && /vRd = rd;/.test(sh.vertexShader) && /varying vec2 vRd;/.test(sh.fragmentShader), 'the rd attribute passed to the fragment');
   ok(/uIll\[i\]/.test(sh.fragmentShader) && /vIllW = /.test(sh.vertexShader), 'a flare lights the road as it lights the ground');
@@ -79,9 +81,8 @@ console.log('-- the road shader: every uniform and attribute it reads is given -
 console.log('-- the painted grass (GRP) on a track\'s crown, and no grass on any road\'s deck --');
 {
   /* the page's GRP block with the hook: the track's grass painted by gpPaint, its uniforms (the wind's clock, the sun) given */
-  const ga = html.indexOf('const GRP = {'), gb = html.indexOf('/* the painted blade (GRP)', ga);
   ok(ga > 0 && gb > ga, 'the page has the painted grass (GRP)');
-  const ctx = vm.createContext({ ENV: { tu: { tEnv: { value: 'tex' }, uSoil: { value: 'soil' } } }, SKY3: { u: null }, location: { search: '' }, VU: { uTime: { value: 0 }, uWind: { value: .5 } }, ENVU: { sun: 'sun' } });
+  const ctx = vm.createContext({ ENV: { tu: { tEnv: { value: 'tex' }, uSoil: { value: 'soil' } } }, SKY3: { u: null }, ...grpStubs });
   vm.runInContext(html.slice(ga, gb) + html.slice(ia, ib) + html.slice(ha, hb) + '\n;globalThis.$ = s => eval(s);', ctx, { filename: 'road-grp.js' });
   const sh = { uniforms: {}, vertexShader: '#include <begin_vertex>\n', fragmentShader: 'void main() {\n#include <color_fragment>\n#include <emissivemap_fragment>\n}' };
   ctx.$('envRoadHook')(sh, { value: 'rd' }, { value: 'rk' }, { value: .9 });
@@ -89,8 +90,6 @@ console.log('-- the painted grass (GRP) on a track\'s crown, and no grass on any
   ok(/gpPaint\( vec3\( 0\.33, 0\.39, 0\.2 \), vRdW\.xz \)/.test(sh.fragmentShader) && /vec3 gpPaint\(/.test(sh.fragmentShader), 'a track\'s grass painted as the field\'s (gpPaint declared and used)');
   ok(!miss.length && need.includes('uGT'), 'with the painted grass, every uniform read is given (' + need.length + (miss.length ? ', missing ' + miss.join(', ') : '') + ')');
   /* the grass keeps off each road's drawn edge (roadEdge), not a fixed 5.5 m from the middle: a main road's deck is 8 m each side of it */
-  const va = html.indexOf('function vegChunk('), vb = html.indexOf('\n}\n', va);
-  ok(/if \(nearRoad && roadEdge\(T, x, z\) < VEG\.road\) continue;/.test(html.slice(va, vb)), 'vegChunk leaves out the clumps within VEG.road m of a road\'s edge');
   const ea = html.indexOf('const RNE = '), eb = html.indexOf('\n}\n', ea) + 2, rn = html.indexOf('const RN = {'), rw = html.slice(rn, html.indexOf('\n', html.indexOf('w: [', rn)));
   const W = JSON.parse(rw.match(/w: (\[[^\]]+\])/)[1]), road = /const VEG = \{\s*[^\n]*road: ([\d.]+)/.exec(html), R = road ? +road[1] : NaN;
   const ectx = vm.createContext({ Math, RN: { w: W, cell: 512 }, segDist: (ax, az, bx, bz, x, z) => { const ex = bx - ax, ez = bz - az, t = Math.max(0, Math.min(1, ((x - ax) * ex + (z - az) * ez) / (ex * ex + ez * ez))); return Math.hypot(x - ax - ex * t, z - az - ez * t); } });

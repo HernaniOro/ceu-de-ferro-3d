@@ -30,9 +30,9 @@ ok(Object.keys(INSIG.kind).every(id => PLANES[id] && !PLANES[id].mdl.glb && (!HE
 ok(Object.keys(HELIS).every(id => INSIG.kind[id]), 'every helicopter wears one');
 ok(kinds.every(k => drawn.includes("k === '" + k + "'")) && Object.values(INSIG.kind).every(k => kinds.includes(k)), 'every marking is one the page draws: ' + kinds.join(' '));
 const by = {}; for (const id in INSIG.kind) { const d = PLANES[id], s = ERAS[d.era].sides[d.side].name; (by[s] || (by[s] = new Set())).add(INSIG.kind[id]); }
-ok(by.Luftwaffe && [...by.Luftwaffe].join() === 'balk', 'the Luftwaffe wears the Balkenkreuz');
+ok(!by.Luftwaffe || [...by.Luftwaffe].join() === 'balk', 'the Luftwaffe, if any (its planes are textured models, with their own markings), the Balkenkreuz');
 ok(by.EUA && [...by.EUA].join() === 'us', 'the USA the star');
-ok(by.Aliados && [...by.Aliados].every(k => k === 'raf' || k === 'us'), 'the Allies the roundel or the star');
+ok(!by.Aliados || [...by.Aliados].every(k => k === 'raf' || k === 'us'), 'the Allies, if any (textured models too), the roundel or the star');
 ok(by['Rússia'] && [...by['Rússia']].join() === 'ru', 'Russia the red star');
 ok(!Object.keys(INSIG.kind).some(id => ERAS[PLANES[id].era].sides[PLANES[id].side].name === 'EUA' && INSIG.kind[id] !== 'us'), 'the USA, if any, the star');
 console.log('-- wing tips --');

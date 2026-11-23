@@ -63215,13 +63215,13 @@ buildUnit = (f => (u, wreck) => {
    markings go on the wings, over and under, and on the fuselage's sides (INSIG: which plane wears which: the Balkenkreuz, the RAF's
    roundel, the USAAF's star and bars, the red star; drawn once on a canvas); a helicopter's on both sides of its tail boom. A wing's marking is a child of that wing's mesh, so it goes
    with the wing when the wing is lost or cut short; the blades of a propeller are one mesh. A burnt plane darkens them with the rest.
-   The textured models (mdl.glb: today every propeller plane, so PROP.blades and WTIP name none) keep their own look and their own blades,
-   which turn here too (glbModel's prop nodes); the stealth bomber wears none ---------- */
-const PROP = { blades: {}, chord: .24, col: 0x1f2122, spin: 40, blur: [.3, .8] };
+   The textured models (mdl.glb: today every propeller plane) keep their own look and their own blades, which turn here too (glbModel's
+   prop nodes); PROP.blades, WTIP and INSIG.kind still name them, the fallback for when the GLB does not read; the stealth bomber wears none ---------- */
+const PROP = { blades: { stuka: 3, bf109: 3, spit: 4, p47: 4, he177: 4, b17: 3 }, chord: .24, col: 0x1f2122, spin: 40, blur: [.3, .8] };
 const CANOPY = { glass: 0x4f6872, hoops: [-.2, .14], tube: .035 };   // the canopy's glass; where the frame's hoops cross it (of its length, from its middle), how thick
 /* the propeller planes' outer wing and tailplane tips, rounded within the same span over this share of the tip's chord (at most .3 of the
    span; the Spitfire's all but elliptical); an inner panel, whose tip is the next one's root (the Stuka's gull wing), keeps its square end */
-const WTIP = {};
+const WTIP = { spit: .95, bf109: .5, p47: .6, stuka: .45, he177: .45, b17: .5 };
 const wingOuter = (m, w) => !m.wings.some(v => v !== w && Math.abs(v.z0 - w.z0 - w.span) < .3 && Math.abs(v.a[0] - w.a[2]) < .2 && Math.abs(v.a[1] - w.a[3]) < .2);   // inner: another panel starts where it ends, with its chord
 function wingRound(w, s, k) {
   const c = Math.abs(w.a[2] - w.a[3]), r = Math.min(c * k, w.span * .3), sp = w.span, f = (sp - r) / sp, mx = (w.a[2] + w.a[3]) / 2, xl = w.a[0] + (w.a[2] - w.a[0]) * f, xt = w.a[1] + (w.a[3] - w.a[1]) * f, sh = new THREE.Shape();
@@ -63229,7 +63229,7 @@ function wingRound(w, s, k) {
   const t = w.t || .18, ge = new THREE.ExtrudeGeometry(sh, { depth: t, bevelEnabled: false, curveSegments: 5 }); ge.translate(0, 0, -t / 2); ge.rotateX(Math.PI / 2); if (s < 0) ge.scale(1, 1, -1);
   return ge;
 }
-const INSIG = { kind: { ah64: 'us', uh60: 'us', mi28: 'ru', mi8: 'ru' }, at: .62, size: [.72, 2.4], fus: .52, boom: .22, tex: {} };
+const INSIG = { kind: { stuka: 'balk', bf109: 'balk', he177: 'balk', spit: 'raf', p47: 'us', b17: 'us', ah64: 'us', uh60: 'us', mi28: 'ru', mi8: 'ru' }, at: .62, size: [.72, 2.4], fus: .52, boom: .22, tex: {} };
 function insigTex(k) {
   if (INSIG.tex[k]) return INSIG.tex[k];
   const w = k === 'us' ? 128 : 64, cv = document.createElement('canvas'); cv.width = w; cv.height = 64;
@@ -64520,7 +64520,7 @@ function syncScene(dt) {
     if (p.def.base && !p.def.bay && !p.heli) hangStores(m, p.id, p.dead ? [] : p.def.ord, p.hung || p.ord);
     if (p.dead && !m.userData.burnt) { m.userData.burnt = true; for (const k of m.userData.mats) k.color.setHex(0x262624); }
     if (p === S.my) mine(m);
-    if (m.userData.glb) for (const c of m.userData.pm.pilot || []) c.visible = !(own && p === S.my);   // from its own seat a textured model's canopy, a shell around the eye, would wall the view: the cockpit draws its frame
+    if (m.userData.glb && p.def.prop) for (const c of m.userData.pm.pilot || []) c.visible = !(own && p === S.my);   // from its own seat a textured propeller plane's canopy, a shell around the eye, would wall the view: the cockpit draws its frame
   });
   syncHelis(dt || 0);
   sync(S.units, gUnits, u => buildUnit(u), (u, m) => {

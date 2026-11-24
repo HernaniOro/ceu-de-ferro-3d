@@ -32385,7 +32385,7 @@ function los(a, ay, b, by) {
    stance and cover let it be made out at (visR), and from an aircraft under a canopy closer still, as a vehicle is (canopy, TREES). M.mem: the target M's owner follows and where it last had it clear of smoke.
    known: it may be picked. sight: what there is to aim at, the target itself or, for SIGHT.mem s, the still point where it went out of
    sight (lost); then null, and the owner lets go of it */
-const ZERO = { x: 0, y: 0, z: 0 }, eyeY = o => o.y + (o.man ? STANCE[o.st].eye * MAN.sc : o.kind ? o.def.mh : 0), bodyY = o => o.y + (o.man ? o.fy || STANCE[o.st].h * MAN.sc * .6 : o.sup ? 1.6 : o.kind ? VLIFT + 1.5 : 0);   // a vehicle's middle (it was 2.5 over the old frame's 1.5: cf-veiculos)
+const ZERO = { x: 0, y: 0, z: 0 }, eyeY = o => o.y + (o.man ? STANCE[o.st].eye * MAN.sc : o.kind ? o.def.mh : 0), bodyY = o => o.y + (o.man ? o.fy || STANCE[o.st].h * MAN.sc * .6 : o.sup ? 1.6 : o.kind ? VLIFT + 1.0 : 0);   // a vehicle's middle, 1.0 over its frame (as 2.5 was over the old frame's 1.5: cf-veiculos)
 const hid = (a, t) => (!!t.man && !t.lost && dist(a, t) > visR(t) * (a.kind ? 1 : MAN.air * (S.T.trv && canopy(t) ? TREES.canopy : 1))) || (!a.kind && !!t.kind && !t.man && !t.lost && !!S.T.trv && dist(a, t) > TREES.air && canopy(t)) || smoked(a.x, eyeY(a), a.z, t.x, bodyY(t), t.z);
 const sees = (a, t) => los(a, eyeY(a), t, bodyY(t)) && !hid(a, t);
 /* the seeker's line: what a guided weapon's sight, seeker or laser needs to its target, for the player and the AI alike, at the lock, at the
@@ -74178,21 +74178,21 @@ function susStep(u, m, cp, i) {
   const far = (u.x - cp.x) * (u.x - cp.x) + (u.z - cp.z) * (u.z - cp.z) > SUSP.far * SUSP.far;
   if (far && q && (frameId + i) & 7) return susPut(u, m, q, G, O, null);
   const g = susGround(u, G), c = Math.cos(u.h), s = Math.sin(u.h);
-  if (!q) { q = { y: g.y, p: g.p, r: g.r, vy: 0, vp: 0, vr: 0, x: u.x, z: u.z, h: u.h, t: S.t, v: 0, a: 0, w: 0, st: 0 }; SUSP.st.set(u, q); }
+  if (!q) { q = { y: g.y, p: g.p, r: g.r, vy: 0, vp: 0, vr: 0, gy: g.y, gp: g.p, gr: g.r, x: u.x, z: u.z, h: u.h, t: S.t, v: 0, a: 0, w: 0, st: 0 }; SUSP.st.set(u, q); }
   const dt = S.t - q.t;   // the battle's time since the last look (a slow frame runs several steps of the sim; a pause none)
   if (dt <= 0) return susPut(u, m, q, G, O, g);
   const dx = u.x - q.x, dz = u.z - q.z, J = WSPIN.jump + SUSP.vmax * dt, jump = dx * dx + dz * dz > J * J || dt > 1;   // a jump: farther than any drive in that time
   q.x = u.x; q.z = u.z; q.t = S.t;
-  if (jump || far) { q.y = g.y; q.p = g.p; q.r = g.r; q.vy = q.vp = q.vr = 0; q.h = u.h; q.v = q.a = q.w = 0; return susPut(u, m, q, G, O, g); }
+  if (jump || far) { q.y = q.gy = g.y; q.p = q.gp = g.p; q.r = q.gr = g.r; q.vy = q.vp = q.vr = 0; q.h = u.h; q.v = q.a = q.w = 0; return susPut(u, m, q, G, O, g); }
   /* the vehicle's speed along itself, its push and its turn, each eased a little (the sim moves it in steps) */
   const v = (dx * c - dz * s) / dt, wr = Math.atan2(Math.sin(u.h - q.h), Math.cos(u.h - q.h)) / dt, e = 1 - Math.exp(-dt / .12); q.h = u.h;
   const a = (v - q.v) / dt; q.v += (v - q.v) * e; q.a += (clamp(a, -12, 12) - q.a) * (1 - Math.exp(-dt / .25)); q.w += (wr - q.w) * e;
   const k = G.trk ? SUSP.trk : 1, pt = g.p + clamp(O.ip * q.a * k, -O.pt, O.pt), rt = g.r + clamp(O.ir * q.v * q.w * k, -O.rt, O.rt);
-  const W = TAU * O.f, n = Math.ceil(dt / (1 / 120)), h = dt / n;
+  const W = TAU * O.f, n = Math.ceil(dt / (1 / 120)), h = dt / n, gvy = (g.y - q.gy) / dt, gvp = (g.p - q.gp) / dt, gvr = (g.r - q.gr) / dt; q.gy = g.y; q.gp = g.p; q.gr = g.r;
   for (let j = 0; j < n; j++) {
-    q.vy += (W * W * (g.y - q.y) - 2 * O.z * W * q.vy) * h; q.y += q.vy * h;
-    q.vp += (W * W * (pt - q.p) - 2 * O.z * W * q.vp) * h; q.p += q.vp * h;
-    q.vr += (W * W * (rt - q.r) - 2 * O.z * W * q.vr) * h; q.r += q.vr * h;
+    q.vy += (W * W * (g.y - q.y) - 2 * O.z * W * (q.vy - gvy)) * h; q.y += q.vy * h;
+    q.vp += (W * W * (pt - q.p) - 2 * O.z * W * (q.vp - gvp)) * h; q.p += q.vp * h;
+    q.vr += (W * W * (rt - q.r) - 2 * O.z * W * (q.vr - gvr)) * h; q.r += q.vr * h;
   }
   q.p = clamp(q.p, -SUSP.lim, SUSP.lim); q.r = clamp(q.r, -SUSP.lim, SUSP.lim);
   if (G.front < 1e8) { const want = Math.abs(q.v) > .8 ? Math.atan(q.w * G.wb / q.v) : q.st; q.st += (clamp(want, -SUSP.steer, SUSP.steer) - q.st) * e; }

@@ -69432,7 +69432,7 @@ addEventListener('keydown', e => {
   if (e.code === 'KeyC') { if (!e.repeat) nextCam(); return; }
   if (e.code === 'KeyR' && !(S.my && S.my.man)) { if (!e.repeat) zoomBy(0); return; }
   if (e.code === 'KeyM') { if (!e.repeat) mapKey(); return; }
-  if (e.code === 'Space' && (spaceJumps() || S.spJ)) { S.input.jump = S.spJ = true; e.preventDefault(); return; }   // on foot Space jumps and never fires (cf-movimento): the trigger is the left button
+  if (e.code === 'Space' && (spaceJumps() || S.spJ)) { if (e.repeat && !S.spJ) S.input.fire = false; S.input.jump = S.spJ = true; e.preventDefault(); return; }   // on foot Space jumps and never fires (cf-movimento): the trigger is the left button
   const k = KEYS[e.code]; if (!k) return;
   S.input[k] = true; e.preventDefault();
 });

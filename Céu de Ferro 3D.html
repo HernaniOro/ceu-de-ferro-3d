@@ -69439,7 +69439,7 @@ addEventListener('keydown', e => {
 addEventListener('keyup', e => { if (e.code === 'Space' && S && S.spJ) { S.input.jump = S.spJ = false; return; } const k = KEYS[e.code]; if (k && S) S.input[k] = false; });   // a Space that jumped lets go of the jump, not of the left button's fire
 addEventListener('keydown', e => { if (e.code === 'KeyI' && playMode === 'play' && !GV.on && S && S.my && S.my.man && !/INPUT|TEXTAREA/.test(e.target.tagName || '')) S.input.recruit = true; });   // hold I beside a civilian to recruit him
 addEventListener('keyup', e => { if (e.code === 'KeyI' && S) S.input.recruit = false; });
-addEventListener('blur', () => { if (S) S.input = {}; });
+addEventListener('blur', () => { if (S) { S.input = {}; S.spJ = false; } });
 document.addEventListener('visibilitychange', () => { if (document.hidden) setPause(true); });
 /* mouse aim: movement only counts while the pointer is locked to the canvas; the sim reads it from S.input */
 cv.addEventListener('mousedown', e => {

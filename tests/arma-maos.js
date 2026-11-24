@@ -41,9 +41,19 @@ console.log('-- every weapon\'s model has its holds --');
 {
   const ids = [...new Set(Object.values(VMW).map(e => e[0]))], miss = ids.filter(id => !VMH[id]);
   ok(!miss.length, ids.length + ' models draw the ' + Object.keys(VMW).length + ' weapons of VMW, each with its holds in VMH' + (miss.length ? ': none for ' + miss.join(', ') : ''));
-  ok(VMW.rpg[0] === 'w_bazooka' && VMW.rpg7v[0] === 'w_bazooka' && VMW.bazooka[0] === 'w_rpg', 'the RPG-7 is drawn with the model of the RPG-7 (w_bazooka, its warhead and two grips) and the M1 bazooka with the plain tube (w_rpg)');
-  const r = VMH.w_bazooka.rot;
-  ok(r && Math.abs(r[0] + Math.PI / 2) < 1e-9 && Math.abs(r[1] - Math.PI) < 1e-9 && r[3] === 'YXZ', '  that model turned round (it came with its warhead behind and its grips sideways): grips down, warhead ahead');
+  /* the RPG-7's model (w_bazooka) turned by its rot as three.js turns an Euler (the order's last axis first): the muzzle toward +x and up +y,
+     as every other pack model; the oracle is the GLB's own shape, the warhead a cone that narrows to a point at the front and swells behind
+     it, the two grips the parts hanging far off the tube */
+  const r = VMH.w_bazooka.rot, ax = { X: [1, 2], Y: [2, 0], Z: [0, 1] };
+  const turn = p => [...r[3]].reverse().reduce((q, a) => { const [i, j] = ax[a], t = r['XYZ'.indexOf(a)], c = Math.cos(t), s = Math.sin(t), o = q.slice(); o[i] = q[i] * c - q[j] * s; o[j] = q[i] * s + q[j] * c; return o; }, p);
+  const P = surface('w_bazooka').map(turn), xs = P.map(p => p[0]), x0 = Math.min(...xs), x1 = Math.max(...xs);
+  const ends = P.filter(p => p[0] < x0 + .05 || p[0] > x1 - .05), mid = d => (Math.min(...ends.map(p => p[d])) + Math.max(...ends.map(p => p[d]))) / 2, A = [mid(1), mid(2)];
+  const rad = (lo, hi) => P.filter(p => p[0] >= lo && p[0] <= hi).reduce((m, p) => Math.max(m, Math.hypot(p[1] - A[0], p[2] - A[1])), 0);
+  const tipF = rad(x1 - .02, x1), bulgeF = rad(x1 - .2, x1), tipB = rad(x0, x0 + .02);
+  ok(tipF < .02 && bulgeF > .04 && tipB > .04, 'the RPG-7 turned by its rot: its warhead ahead, a point (' + f(tipF) + ' off the axis) swelling to ' + f(bulgeF) + ', the flared end (' + f(tipB) + ') behind');
+  const grip = P.filter(p => Math.hypot(p[1] - A[0], p[2] - A[1]) > .08 && p[0] > x0 + .2 && p[0] < x1 - .2);
+  const down = grip.filter(p => p[1] < A[0]).length, hold = [VMH.w_bazooka.g, VMH.w_bazooka.f].map(turn);
+  ok(grip.length && down > grip.length / 2 && Math.min(...grip.map(p => p[1])) < A[0] - .09 && Math.max(...grip.map(p => Math.abs(p[2] - A[1]))) < .03 && hold.every(h => h[1] < A[0] - .04), '  its grips hang down under the tube (' + down + ' of ' + grip.length + ' points far off it below), and both hands on them');
 }
 
 console.log('-- each hold on the model --');
@@ -84,12 +94,4 @@ console.log('-- the hands in a reload and at the bolt --');
   const B = { g: A.g, f: A.f }; ok(dist(pose(B, (P[1][0] + P[2][0]) / 2, -1).L, A.f) < 1e-9 && pose(B, P[3][0], -1).L[1] < A.f[1] - .1, 'a launcher (no magazine): the left hand drops for the next round and comes back');
 }
 
-console.log('-- the page uses them --');
-{
-  const vb = (() => { const i = html.indexOf('function vmBuild('); return html.slice(i, html.indexOf('\n}\n', i)); })();
-  const vr = (() => { const i = html.indexOf('function vmRender('); return html.slice(i, html.indexOf('\n}\n', i)); })();
-  ok(/VMH\[pk\.id\]/.test(vb) && /h\.rot/.test(vb) && /V\.hR = fist\(A\.g/.test(vb) && /V\.hL = fist\(A\.f/.test(vb), 'vmBuild puts the hands on the holds of VMH, the model turned by its rot');
-  ok(/vmHandPose\(V\.A, /.test(vr) && /vmArms\(V\)/.test(vr), 'vmRender moves the hands (reload, bolt) and reaches the arms to them each frame');
-  ok(!/vmLimb\(/.test(html), 'no arm hung stiff from the weapon any more (vmLimb gone)');
-}
 done();

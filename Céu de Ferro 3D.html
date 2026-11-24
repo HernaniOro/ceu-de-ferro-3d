@@ -73972,7 +73972,7 @@ function packWeapon(s, m) {
 function packHold(w, at, rz) { w.position.set(at[0], at[1], at[2]); w.rotation.set(0, 0, rz); }
 function packPose(s, m, dt, fresh) {
   const st = m.dead ? 3 : m.st, mv = m.dead ? 0 : Math.hypot(m.v.x, m.v.z), a = m.arms && m.arms[m.w], fire = !!a && S.t - a.t < .3, rl = !!a && a.rl > 0;
-  const air = st === 0 && m.jh > 0, nm = st === 3 ? 'death' : st === 2 || air ? 'aim' : mv > 3.2 || (m.run && mv > .5) ? (fire && s.act.runfire ? 'runfire' : 'run') : mv > .3 ? 'walk' : m.civ ? 'idle' : fire ? 'fire' : rl ? 'idle' : st === 1 || m.ap ? 'aim' : 'idle';
+  const air = st === 0 && m.jh > 0, nm = st === 3 ? 'death' : st === 2 || air ? 'aim' : mv > MAN.walk * 1.3 || (m.run && mv > .5) ? (fire && s.act.runfire ? 'runfire' : 'run') : mv > .3 ? 'walk' : m.civ ? 'idle' : fire ? 'fire' : rl ? 'idle' : st === 1 || m.ap ? 'aim' : 'idle';
   packPlay(s, nm, fresh ? 0 : air ? .08 : .18);
   if (s.cur && (nm === 'run' || nm === 'runfire' || nm === 'walk') && !m.civ) s.cur.timeScale = clamp(Math.pow(mv / MOVE.clip[nm === 'walk' ? 0 : 1], .75), .5, 2); else if (s.cur) s.cur.timeScale = 1;   // the legs' cycle by the pace (cf-movimento): quicker, and the rest a longer stride
   if (fresh && nm === 'death' && s.act.death) s.act.death.time = s.act.death.getClip().duration;

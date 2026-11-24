@@ -74087,22 +74087,15 @@ syncScene = (g => dt => {
    wheel rises or drops to meet the ground under it (spinMat: within tr m of travel; a tracked hull keeps its road wheels in the belt), the
    front wheels steer by the turn the vehicle makes, and a tracked hull's links run round its tracks with the road it covers (susTreads).
    All of it is what is drawn: the sim, the net and the hit boxes do not move. The turret and the gun are turned in the tilted body so the
-   barrel still points where the sim aims it (u.ty, u.tp). Taste: ?susp=firme|media|macia (localStorage cf-susp), the spring's
-   frequency f Hz and damping z, the pitch ip and the roll ir a m/s² of push, the most pitch pt and roll rt it gives (rad), the wheels'
-   travel tr m; ?susp=0 leaves them as they were. vmax: m/s no vehicle drives (farther than that since the last look is a jump); lim: the most tilt; trk: the push a tracked hull feels, of a wheeled one's; steer:
-   the most a front wheel turns (rad); far: m from the eye inside which the spring runs every frame (beyond it the body is laid on the
-   ground every 8th frame); flat: m between u.y and the ground that says it stands on a deck or a roof (it lies level); dip: m a hull may
-   sink into a crest between its corners; link: m between two track links, links at most. The player's own vehicle seen from its own seat
+   barrel still points where the sim aims it (u.ty, u.tp). The spring: frequency f Hz and damping z (a military car's, chosen over a firm
+   and a soft one: it sways once and settles); the pitch ip and the roll ir a m/s² of push, the most pitch pt and roll rt it gives (rad);
+   the wheels' travel tr m. vmax: m/s no vehicle drives (farther than that since the last look is a jump); lim: the most tilt; trk: the
+   push a tracked hull feels, of a wheeled one's; steer: the most a front wheel turns (rad); far: m from the eye inside which the spring
+   runs every frame (beyond it the body is laid on the ground every 8th frame); flat: m between u.y and the ground that says it stands on
+   a deck or a roof (it lies level); dip: m a hull may sink into a crest between its corners; link: m between two track links, links at
+   most; on: off after an error, so a frame that throws does not throw again. The player's own vehicle seen from its own seat
    (camSt.body: drawn round the eye, which does not tilt) stays level */
-const SUSP = { o: { firme: { f: 2.3, z: .8, ip: .003, ir: .005, tr: .1, pt: .04, rt: .04 }, media: { f: 1.5, z: .5, ip: .006, ir: .01, tr: .18, pt: .07, rt: .08 },
-    macia: { f: 1, z: .32, ip: .011, ir: .017, tr: .28, pt: .1, rt: .11 } },
-  def: 'media', vmax: 70, lim: .45, trk: .55, steer: .6, far: 650, flat: .6, dip: .15, link: .48, links: 90, k: null, on: true, st: new WeakMap() };
-(() => {
-  let v = null;
-  try { const m = location.search.match(/[?&]susp=([a-z0-9]+)/); v = m ? m[1] : localStorage.getItem('cf-susp'); } catch (e) {}
-  if (v === '0') SUSP.on = false;
-  SUSP.k = SUSP.o[v] ? v : SUSP.def;
-})();
+const SUSP = { f: 1.5, z: .5, ip: .006, ir: .01, pt: .07, rt: .08, tr: .18, vmax: 70, lim: .45, trk: .55, steer: .6, far: 650, flat: .6, dip: .15, link: .48, links: 90, on: true, st: new WeakMap() };
 /* where a vehicle meets the ground, in model units: the front and the rear axle (TLOOK's, else a share of its length) and the half track */
 function susGeo(u, m) {
   const d = u.def, T = typeof TLOOK !== 'undefined' && TLOOK[d.id], ax = T && T.ax ? T.ax.slice().sort((a, b) => b - a) : null, trk = hullTracked(u), half = !!(T && T.trk);
@@ -74179,7 +74172,7 @@ function susGround(u, G) {
 }
 /* the body laid on its spring this frame: q its state [y, p, r] and their rates; the push from the vehicle's own speed and turn */
 function susStep(u, m, cp, i) {
-  const U = m.userData, G = U.sus || (U.sus = susGeo(u, m)), O = SUSP.o[SUSP.k];
+  const U = m.userData, G = U.sus || (U.sus = susGeo(u, m)), O = SUSP;
   if (!U.susOk) { U.susOk = 1; susFit(m, G); if (hullTracked(u)) susTreads(u, m); }
   let q = SUSP.st.get(u);
   const far = (u.x - cp.x) * (u.x - cp.x) + (u.z - cp.z) * (u.z - cp.z) > SUSP.far * SUSP.far;

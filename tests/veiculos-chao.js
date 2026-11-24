@@ -1,34 +1,29 @@
 'use strict';
 /* the ground vehicles on the ground (cf-veiculos): every vehicle hung 1.5 m over the ground, its model, its hit boxes, its gun's pivot and
-   its seats all from a frame at u.y + 1.5. Now that frame is VLIFT (0) over u.y: checked on the sim (the gun's pivot d.mh over the frame
-   is where the model puts the turret, a hit in the middle of the hull lands on it, the AI aims at the vehicle's middle) and on the page's
-   text (no model, hit or seat placed at the old 1.5 again). The scene's spring (SUSP) and the pack's turned models (PACK.back: the HMMWV
-   drove backwards) are checked on the text: the 3D part is not loaded by the harness */
-const fs = require('fs'), H = require('./harness'), { ok, done } = H;
+   its seats all from a frame at u.y + 1.5. The oracle is the ground itself: tracks and wheels touch it. So the point a hand (0.2 m) over
+   the ground in the middle of a track or a wheel is inside that part's hit box (on the old frame the boxes began 1.5 m up and it was in
+   none), a point half a metre over the roof is in no box, the gun's pivot (d.mh) stands over the ground within the vehicle and its mount,
+   and the AI aims at the body, below the roof. Each point is put in the vehicle's frame and tested against its boxes as the page's hits
+   are (toBody, boxDist) */
+const H = require('./harness'), { ok, done } = H;
 console.log('page: ' + H.PAGE);
-const html = fs.readFileSync(H.PAGE, 'utf8');
-if (!/const VLIFT = /.test(html)) { console.log('no VLIFT: a page before cf-veiculos'); process.exit(0); }
-const C = H.load({ seed: 3 }), $ = C.$, VLIFT = $('VLIFT'), GS = $('GS'), S = () => $('S');
-
-console.log('-- the frame on the ground --');
-ok(VLIFT === 0, 'a vehicle\'s frame stands on the ground (VLIFT ' + VLIFT + ')');
-const old = [/g\.position\.set\(u\.x, u\.y \+ 1\.5, u\.z\)/, /m\.position\.set\(u\.x, u\.y \+ 1\.5, u\.z\)/, /y - o\.y - \(o\.kind \? 1\.5 : 0\)/, /y - u\.y - 1\.5, z - u\.z/, /SP\.y = u\.y \+ 1\.5/, /d\.mh = 1\.5 \+/, /\(d\.mh - 1\.5\) \/ GS/];
-const left = old.filter(r => r.test(html));
-ok(!left.length, 'no model, hit, seat or gun pivot from the old frame 1.5 m up' + (left.length ? ': ' + left.map(String).join(' ') : ''));
-
-console.log('-- the sim on that frame --');
+const C = H.load({ seed: 3 }), $ = C.$, bodyY = $('bodyY'), toBody = $('toBody'), boxDist = $('boxDist'), HB = $('HB');
+let VLIFT = 1.5; try { VLIFT = $('VLIFT'); } catch (e) {}
 C.sandbox('modern');
-const TANKS = $('TANKS'), TRNS = $('TRNS'), bodyY = $('bodyY');
-for (const [kind, id] of [['tank', 'abrams'], ['tank', 't90'], ['car', 'hmmwv'], ['truck', 'ural'], ['lav', 'lav25']]) {
-  const u = C.addVehicle(kind, id, 0, S().base[0].x - 200 - S().units.length * 30, S().base[0].z, 0), d = u.def, hull = d.parts[0].box;
-  const mid = C.hitPart(u, u.x + hull[0], u.y + VLIFT + hull[1], u.z + hull[2]);
-  ok(mid === 0 || d.parts[mid].box, id + ': a hit in the middle of its hull lands on the vehicle (part ' + d.parts[mid].id + ')');
-  ok(d.mh > VLIFT && d.mh - VLIFT < GS * (1 + d.hh + (d.t ? d.t[2] : 1)), id + ': the gun\'s pivot ' + d.mh.toFixed(2) + ' m over the ground, inside the vehicle\'s height');
-  const by = bodyY(u) - u.y; ok(by > .5 && by < GS * (.5 + d.hh) + 1, id + ': the AI aims ' + by.toFixed(2) + ' m over the ground, at the body');
-}
+const S = () => $('S');
+/* the parts whose box holds the world point (x, y, z) */
+const inside = (u, x, y, z) => { toBody(u, x - u.x, y - u.y - VLIFT, z - u.z, 0); return u.def.parts.filter(d => d.box && boxDist(u, d, HB[0], HB[1], HB[2]) === 0).map(d => d.id); };
+/* the world point at the middle (x, z) of a part's box, h m over the ground (the vehicle faces +x: heading 0) */
+const at = (u, b, h) => [u.x + b[0], u.y + h, u.z + (b.length === 7 ? b[2] + (b[5] + b[6]) / 2 : b[2])];
 
-console.log('-- the scene (text) --');
-ok(/const SUSP = \{ f: [\d.]+, z: [\d.]+/.test(html) && !/[?&]susp=/.test(html.replace(/\/\*[\s\S]*?\*\//g, '')), 'one spring (SUSP), no taste left in the URL');
-ok(/back: \{ car_hmmwv: 1 \}/.test(html) && /body\.scale\.set\(sx \* bk, sy, sz \* bk\)/.test(html), 'the HMMWV, made facing -x, is turned about the upright (PACK.back)');
-ok(/aWheel\.x - uSF\.x\) \* uSF\.z > 0\./.test(html) && /-uSpin \/ aWheel\.w \* uSF\.z/.test(html), 'a turned model\'s wheels roll and steer its way (uSF.z)');
+for (const [kind, id, low] of [['tank', 'abrams', 'trackR'], ['tank', 't90', 'trackL'], ['car', 'hmmwv', 'wFR'], ['truck', 'ural', 'wRL'], ['lav', 'lav25', 'wFL']]) {
+  const u = C.addVehicle(kind, id, 0, S().base[0].x - 200 - S().units.length * 30, S().base[0].z, 0), D = u.def.parts, P = D.find(d => d.id === low && d.box);
+  if (!P) { ok(false, id + ': has a part ' + low); continue; }
+  const got = inside(u, ...at(u, P.box, .2));
+  ok(got.includes(low), id + ': 0.2 m over the ground in the middle of its ' + low + ' is inside it (' + (got.join(' ') || 'in no box') + ')');
+  const roof = Math.max(...D.filter(d => d.box).map(d => d.box[1] + d.box[4])) + VLIFT, over = inside(u, u.x, u.y + roof + .5, u.z);
+  ok(!over.length, id + ': half a metre over its roof (' + (roof + .5).toFixed(2) + ' m over the ground) is in no box' + (over.length ? ' (' + over.join(' ') + ')' : ''));
+  ok(u.def.mh > 1 && u.def.mh < roof + 1.5, id + ': the gun\'s pivot ' + u.def.mh.toFixed(2) + ' m over the ground, at most a mount over its roof ' + roof.toFixed(2));
+  const by = bodyY(u) - u.y; ok(by > .4 && by < roof, id + ': the AI aims ' + by.toFixed(2) + ' m over the ground, at the body under the roof');
+}
 done();

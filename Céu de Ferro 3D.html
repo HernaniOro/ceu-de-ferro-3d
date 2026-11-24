@@ -74089,14 +74089,14 @@ syncScene = (g => dt => {
    All of it is what is drawn: the sim, the net and the hit boxes do not move. The turret and the gun are turned in the tilted body so the
    barrel still points where the sim aims it (u.ty, u.tp). Taste: ?susp=firme|media|macia (localStorage cf-susp), the spring's
    frequency f Hz and damping z, the pitch ip and the roll ir a m/s² of push, the most pitch pt and roll rt it gives (rad), the wheels'
-   travel tr m; ?susp=0 leaves them as they were. lim: the most tilt; trk: the push a tracked hull feels, of a wheeled one's; steer:
+   travel tr m; ?susp=0 leaves them as they were. vmax: m/s no vehicle drives (farther than that since the last look is a jump); lim: the most tilt; trk: the push a tracked hull feels, of a wheeled one's; steer:
    the most a front wheel turns (rad); far: m from the eye inside which the spring runs every frame (beyond it the body is laid on the
    ground every 8th frame); flat: m between u.y and the ground that says it stands on a deck or a roof (it lies level); dip: m a hull may
    sink into a crest between its corners; link: m between two track links, links at most. The player's own vehicle seen from its own seat
    (camSt.body: drawn round the eye, which does not tilt) stays level */
 const SUSP = { o: { firme: { f: 2.3, z: .8, ip: .003, ir: .005, tr: .1, pt: .04, rt: .04 }, media: { f: 1.5, z: .5, ip: .006, ir: .01, tr: .18, pt: .07, rt: .08 },
     macia: { f: 1, z: .32, ip: .011, ir: .017, tr: .28, pt: .1, rt: .11 } },
-  def: 'media', lim: .45, trk: .55, steer: .6, far: 650, flat: .6, dip: .15, link: .48, links: 90, k: null, on: true, st: new WeakMap() };
+  def: 'media', vmax: 70, lim: .45, trk: .55, steer: .6, far: 650, flat: .6, dip: .15, link: .48, links: 90, k: null, on: true, st: new WeakMap() };
 (() => {
   let v = null;
   try { const m = location.search.match(/[?&]susp=([a-z0-9]+)/); v = m ? m[1] : localStorage.getItem('cf-susp'); } catch (e) {}
@@ -74188,7 +74188,7 @@ function susStep(u, m, cp, i) {
   if (!q) { q = { y: g.y, p: g.p, r: g.r, vy: 0, vp: 0, vr: 0, x: u.x, z: u.z, h: u.h, t: S.t, v: 0, a: 0, w: 0, st: 0 }; SUSP.st.set(u, q); }
   const dt = S.t - q.t;   // the battle's time since the last look (a slow frame runs several steps of the sim; a pause none)
   if (dt <= 0) return susPut(u, m, q, G, O, g);
-  const dx = u.x - q.x, dz = u.z - q.z, jump = dx * dx + dz * dz > WSPIN.jump * WSPIN.jump || dt > .25;
+  const dx = u.x - q.x, dz = u.z - q.z, J = WSPIN.jump + SUSP.vmax * dt, jump = dx * dx + dz * dz > J * J || dt > 1;   // a jump: farther than any drive in that time
   q.x = u.x; q.z = u.z; q.t = S.t;
   if (jump || far) { q.y = g.y; q.p = g.p; q.r = g.r; q.vy = q.vp = q.vr = 0; q.h = u.h; q.v = q.a = q.w = 0; return susPut(u, m, q, G, O, g); }
   /* the vehicle's speed along itself, its push and its turn, each eased a little (the sim moves it in steps) */

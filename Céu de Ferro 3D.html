@@ -29217,15 +29217,21 @@ const KITS = {
 const INF = { ww2: [['schutze', 'mgschutze', 'pzjager'], ['rifleman', 'bargunner', 'bazookaman']], modern: [['blueRifle', 'blueSaw', 'blueAT', 'blueAD'], ['redRifle', 'redMG', 'redAT', 'redAD']] };
 const SQUAD = { ww2: [0, 0, 0, 1, 2], modern: [0, 0, 0, 1, 2, 3] };
 /* the body. hp; sc: how much larger than life a soldier is drawn and hit, as the vehicles are; r: its radius, m. walk, run: m/s; stam: s of
-   sprint, rest: s to get it back, wind: what must be back before the next. turn: rad/s; stT: s to change stance; swap: s to change weapon.
+   sprint, rest: s to get it back, wind: what must be back before the next. walk and run (cf-movimento: were 2.7 and 5.6, slow for a body drawn
+   sc times life size) are the player's and the AI's alike; jump: m the feet rise on Space (MOVE). turn: rad/s; stT: s to change stance; swap: s to change weapon.
    zone: damage by zone [torso, head, legs, arms]; band: a standing body up to band[0] of its height is legs, above band[1] head; armP: a
    torso hit that takes an arm. limp: speed lost per point of leg wound, at most; shake: spread gained per point of arm wound.
    move: spread when moving; ads: sighted fire, spread, field of view and walking pace. see: m at which one standing in the open is seen,
    air: times that from an aircraft, flash: times that for 2 s after it fires. body: s a body lies. over: a vehicle faster than this m/s runs a soldier over.
    reach: m from a friendly truck to resupply, in fill s. nade, smk: the hand grenades, thrown at spd; a smoke one puts up a screen r by h m */
-const MAN = { hp: 22, sc: 1.7, r: .42, walk: 2.7, run: 5.6, stam: 9, rest: 14, wind: .3, turn: 7, stT: .45, swap: .7, zone: [1, 3, .6, .5], band: [.45, .86], armP: .2, limp: [.07, .6], shake: .12,
+const MAN = { hp: 22, sc: 1.7, r: .42, walk: 4, run: 9, jump: 1.4, stam: 9, rest: 14, wind: .3, turn: 7, stT: .45, swap: .7, zone: [1, 3, .6, .5], band: [.45, .86], armP: .2, limp: [.07, .6], shake: .12,
   move: 1.9, ads: { sp: .4, fov: 34, spd: .55 }, see: 1100, air: 2.5, flash: 1.5, body: 25, over: 2, reach: 14, fill: 3,
   nade: { n: 2, dmg: 60, r: 11, spd: 17, cool: 1.6 }, smk: { n: 1, r: 15, h: 8, spd: 15 } };
+/* the legs on foot (cf-movimento): stride, the share of the ground covered that turns the legs' cycle [walking, running], so the quicker pace
+   (MAN.walk, MAN.run) takes longer strides and not only quicker ones; clip: the [walk, run] m/s the pack's walk and run clips were matched
+   to, which play quicker with the pace by the same rule (packPose); g: m/s2 that brings a jump (MAN.jump) down; tuck: rad the pack's thighs
+   and shins bend in the air */
+const MOVE = { g: 22, stride: [.85, .6], clip: [2.7, 5.6], tuck: [-.3, .45] };
 const ROADH = .35;   // the scene's road deck above the ground it follows (was 2.2, which showed as a floating ribbon from the side; the depth bias polygonOffset does the rest)
 const BRDH = 2.2;   // a bridge's deck above the ground (bridges keep their old height)
 /* the scene's ribbon of a road edge E, half width hw (buildWorld: one mesh a class holds all its edges): NC vertices across every ~12 m (so no
@@ -33561,7 +33567,7 @@ function stepMan(m, dt) {
     let nx = m.x + c.mx * v, nz = m.z + c.mz * v;
     for (let _i = 0, _l = near(nx, nz, 1), o = _l[0]; _i < _l.length; o = _l[++_i]) if (S.os[o.id] < 2 && pushOut(o, nx, nz, MAN.r * MAN.sc)) { nx += PUSH.x; nz += PUSH.z; }   // a wall or a trunk: it slides along it
     const ny = hgt(nx, nz), h0 = hgt(m.x, m.z), wet = ny <= S.T.WL + .2 && !(h0 <= S.T.WL + .2 && ny >= h0 - .01);   // one set down in the water (out of a hull afloat, thrown from one) wades out: a step no deeper (cf-obras-sair)
-    if (!(wet || (ny - h0) / (Math.hypot(nx - m.x, nz - m.z) || 1) > 1.1 || nx < 0 || nx > S.W || Math.abs(nz) > S.HW)) { m.x = nx; m.y = manY(nx, nz); m.z = nz; m.step += Math.hypot(nx - x0, nz - z0); m.moveT = S.t; }
+    if (!(wet || (ny - h0) / (Math.hypot(nx - m.x, nz - m.z) || 1) > 1.1 || nx < 0 || nx > S.W || Math.abs(nz) > S.HW)) { m.x = nx; m.y = manY(nx, nz); m.z = nz; m.step += Math.hypot(nx - x0, nz - z0) * MOVE.stride[run ? 1 : 0]; m.moveT = S.t; }
   }
   m.run = run; m.v = { x: (m.x - x0) / dt, y: (m.y - y0) / dt, z: (m.z - z0) / dt };
   manArms(m, dt);
@@ -33574,7 +33580,7 @@ function ghostMan(m, dt) {
   if ((s.age += dt) < 1) { s.x += v.x * dt; s.z += v.z * dt; m.x += v.x * dt; m.z += v.z * dt; }
   m.x += (s.x - m.x) * k; m.z += (s.z - m.z) * k; m.y = manY(m.x, m.z);
   m.h = wrap(m.h + wrap(s.h - m.h) * k); m.ap += (s.ap - m.ap) * k; manDir(m);
-  m.step += Math.hypot(v.x, v.z) * dt; a.cool -= dt;
+  m.step += Math.hypot(v.x, v.z) * dt * MOVE.stride[m.run ? 1 : 0]; a.cool -= dt;
   if (m.ctl.fire && !a.d.k && a.cool <= 0) { a.mag = 2; manFire(m, a); }
 }
 /* ---------- infantry: squads and their AI ----------
@@ -34422,7 +34428,7 @@ function pickMan(u, M, range, at) {
 /* is o ahead of u along its road */
 const ahead = (u, o) => { const p = routeAt(S.T.routes[u.ri], u.s); return ((o.x - u.x) * p.dx + (o.z - u.z) * p.dz) * u.ds > 0; };
 /* ---------- infantry: the player's hands on a soldier ----------
-   It walks where the aim looks: W S along it, A D across. The inputs are the ones the keys already give: thrUp (Shift) runs, thrDown (Z)
+   It walks where the aim looks: W S along it, A D across. jump (Space) jumps. The inputs are the ones the keys already give: thrUp (Shift) runs, thrDown (Z)
    changes stance, yawL (Q) the weapon, flare (F) throws a grenade, smoke (G) a smoke one, ordA (right button) sights; those that act once
    are taken on the press.
    S.lockGnd or S.lockAir is what a guided special has in its sight, and S.lockOk says the lock is ready */
@@ -34431,6 +34437,7 @@ function walk(P, I, dt) {
   const hit = k => { const v = !!I[k], e = v && !kd[k]; kd[k] = v; return e; };
   c.mx = ch * fw + sh * sd; c.mz = -sh * fw + ch * sd; c.run = !!I.thrUp && fw > 0; c.aim = a.d; c.fire = !!I.fire; c.ads = !!I.ordA && !c.run; c.rl = !!I.reload;
   if (hit('thrDown')) c.st = (c.st + 1) % 3;
+  if (hit('jump')) c.jump = 1;   // Space (cf-movimento): taken by manJump, which says whether he can
   if (hit('yawL') && P.arms[1]) c.w = 1 - c.w;
   if (hit('flare')) c.nade = 1; else if (hit('smoke')) c.nade = 2;
   build(P, I, hit('build'), hit('fire'));
@@ -36105,7 +36112,7 @@ const trnRx = {
    flags of state and gstate plus 8 for a fixed vehicle; an entity missing from its snapshot is gone. Its discrete shots are aiord, aishot and
    aiflare, its losses aidown. Anyone else's hit on an AI ghost goes to the host as aihit, and the host's AI hits a player with hit and by = aid.
    When the host leaves, the next one turns its ghosts into live entities (adopt) and the battle goes on.
-   mstate: a soldier, p position, a [heading, aim pitch], v [vx, vz], s stance (bits 0-1) and weapon in hand (bit 2), hp, f flags (1 firing its
+   mstate: a soldier, p position, a [heading, aim pitch], v [vx, vz], s stance (bits 0-1) and weapon in hand (bit 2), hp, f flags (2 in a jump, p[1] his height then; 1 firing its
    small arm, 4 dead, 16 invulnerable); a ghost fires its small arm while the flag is up, and its hits count nowhere. toss and aitoss: what a
    soldier throws or launches unguided, k 0 its rocket, 1 a grenade, 2 a smoke grenade, from p at v, flown again by every client; a guided
    special goes as ord, with its target and the missile's id. AI soldiers ride in ai snapshots of their own (k 2), every third tick: a row is
@@ -36194,7 +36201,7 @@ const Net = {
     Net.acc = 0;
     const r = (v, n) => +v.toFixed(n), p = [r(P.x, 1), r(P.y, 1), r(P.z, 1)], v = [r(P.v.x, 1), r(P.v.y, 1), r(P.v.z, 1)], hp = r(Math.max(0, P.hp), 1), f = (P.dead ? 4 : 0) | (P.gone ? 8 : 0) | (P.inv > 0 ? 16 : 0), d = P.man ? 0 : dbits(P), a = P.man && P.arms[P.w];
     if (P.heli) return Net.hstate(P, p, v, hp, f, d);
-    if (P.man) Net.send('mstate', { p, a: [r(P.h, 3), r(P.ap, 3)], v: [v[0], v[2]], s: P.st | P.w << 2, hp, f: f & 20 | (!P.dead && P.ctl.fire && !a.d.k && a.mag > 0 && !(a.rl > 0) ? 1 : 0) });
+    if (P.man) Net.send('mstate', { p, a: [r(P.h, 3), r(P.ap, 3)], v: [v[0], v[2]], s: P.st | P.w << 2, hp, f: f & 20 | (!P.dead && P.ctl.fire && !a.d.k && a.mag > 0 && !(a.rl > 0) ? 1 : 0) | (P.jh > 0 ? 2 : 0) });
     else if (P.kind) Net.send('gstate', { p, a: [r(P.h, 3), r(P.ty, 3), r(P.tp, 3)], v, hp, d, f: f | (P.dead ? 0 : (P.ctl.fire[0] && P.arms[0].ammo > 0 ? 1 : 0) | (P.ctl.fire[1] && P.arms[1].ammo > 0 ? 2 : 0)) });
     else Net.send('state', { p, q: [r(P.q.x, 4), r(P.q.y, 4), r(P.q.z, 4), r(P.q.w, 4)], v, thr: r(P.ctl.thr, 2), hp, d, f: f | (P.fire && !P.dead && P.ammo > 0 ? 1 : 0) | (P.ab ? 2 : 0) });
   },
@@ -63131,7 +63138,7 @@ function paraHands(P, I, dt) {
   const A = P.para, K = A.kd || (A.kd = {}), hit = k => { const v = !!I[k], e = v && !K[k]; K[k] = v; return e; };
   const c = P.ctl; c.mx = c.mz = 0; c.fire = false; c.ads = false; c.run = false; c.aim = S.aim.d;
   S.lead = S.sol = S.gf = S.lockAir = S.lockGnd = S.noLos = null; S.aimR = 0; S.rearm = 0;
-  const E = hit('yawR'), O = hit('fire');
+  const E = hit('yawR'), O = hit('fire') | hit('jump');   // the button, or Space (on foot Space is jump, not fire: cf-movimento)
   if (A.st === 'ride') { if (E) paraJump(P, A, paraPlane(A)); }
   else if (A.st === 'fall') {
     if (O) paraOpen(P, A);
@@ -63148,6 +63155,27 @@ function paraHands(P, I, dt) {
 }
 walk = (g => (P, I, dt) => (P.para ? paraHands(P, I, dt) : g(P, I, dt)))(walk);
 stepMan = (g => (m, dt) => { if (m.para && !m.net && !m.in) { paraMan(m, dt); return; } g(m, dt); })(stepMan);
+/* ---- the jump on foot (cf-movimento) ----
+   Space jumps (ctl.jump, from walk); the AI does not. jh: m the feet are over the ground the body stands on, jv: its m/s. That ground is
+   set after the step by whatever holds the soldier (the terrain or a road, a trench, a building's floor, a tower's platform: fortMen, then
+   bldMen), so the jump is added after bldMen (jA: what was added to y) and taken back before the soldier's next step, and every pose finds
+   the ground it left. Walls and trunks push him out in the plane as ever: a jump clears nothing, it is a hop. Only standing, from the ground,
+   not upstairs, on a stair, on a tower or at a gun. A remote player's comes in his mstate (f bit 2, p[1] his height then): jt, eased to */
+const canJump = m => !m.down && m.st === 0 && !(m.jh > 0) && !m.tw && !m.pa && !(m.cbo && (m.cbl > 0 || m.cbz));
+stepMan = (g => (m, dt) => { if (m.jA) { m.y -= m.jA; m.jA = 0; } g(m, dt); })(stepMan);
+function manJump(dt) {
+  for (const m of S.men) {
+    if (m.dead || m.in || m.para) { if (m.jA) m.y -= m.jA; m.jA = m.jh = m.jv = 0; m.ctl.jump = 0; continue; }
+    if (m.net) m.jh = m.cbin ? 0 : (m.jh || 0) + ((m.jt || 0) - (m.jh || 0)) * Math.min(1, dt * 15);   // in a building his floor height already carries it (bldGhost)
+    else {
+      if (m.ctl.jump) { m.ctl.jump = 0; if (canJump(m)) m.jv = Math.sqrt(2 * MOVE.g * MAN.jump); }
+      if (m.jv || m.jh > 0) { m.jh = (m.jh || 0) + (m.jv - MOVE.g * dt / 2) * dt; m.jv -= MOVE.g * dt; if (m.jh <= 0) m.jh = m.jv = 0; }   // the exact arc, whatever the step
+    }
+    if (m.jh > .01) { m.y += m.jh; m.jA = m.jh; } else if (m.net) m.jh = 0;
+  }
+}
+bldMen = (g => dt => { g(dt); manJump(dt); })(bldMen);
+if (typeof Net !== 'undefined' && Net.rx) { const f = Net.rx.mstate; Net.rx.mstate = m => { f(m); const g = Net.ghosts.get(m.from); if (g && g.man && Array.isArray(m.p)) g.jt = m.f & 2 ? clamp(m.p[1] - manY(m.p[0], m.p[2]), 0, 4) : 0; }; }
 /* a jumper killed in the air falls on: under his canopy slowly, else as a stone */
 function paraDead(dt) {
   for (const m of S.men) {
@@ -65453,7 +65481,7 @@ function poseMan(m, put) {
   const gl = st === 3 || m.civ || !e ? .001 : sp ? 1.25 : clamp(e[1] / .9, .3, 1.7), th = sp ? .13 : e && e[0] === 'w_pistol' ? .05 : .07;   // each weapon its length (PACK.arm, cf-armas-3p); a sniper's pistol was a launcher's tube
   R.root.position.set(m.x, m.y, m.z); R.root.rotation.y = m.h; R.root.rotation.z = m.para && m.para.st === 'fall' && !m.dead ? PARA.tilt : 0; R.root.scale.setScalar(MAN.sc);   // in free fall belly down (PARA)
   R.body.position.y = hip + (st < 2 ? Math.abs(Math.cos(ph)) * .05 * mv : 0); R.body.rotation.z = lean;
-  R.legs.forEach((L, i) => { const s = i ? -1 : 1; L.position.y = hip; L.rotation.z = st === 3 ? 1.5 : st === 2 ? -1.5 + s * sw * .22 : st === 1 ? s * .75 + s * sw * .25 : s * sw * (.55 + .4 * run); R.leg[i].scale.y = len; R.leg[i].position.y = -len / 2; });
+  R.legs.forEach((L, i) => { const s = i ? -1 : 1; L.position.y = hip; L.rotation.z = st === 3 ? 1.5 : st === 2 ? -1.5 + s * sw * .22 : st === 1 ? s * .75 + s * sw * .25 : m.jh > 0 ? s * .35 : s * sw * (.55 + .4 * run); R.leg[i].scale.y = len; R.leg[i].position.y = -len / 2; });
   const up = Math.PI / 2 + m.ap - lean;   // the arms and the weapon follow the aim, whatever the body leans
   R.arms.forEach((A, i) => { A.rotation.z = st === 3 ? 2.7 : run > .5 ? (i ? 1 : -1) * sw * .8 + .2 : up - (i ? .22 : .05) + (st === 2 ? .25 : 0); });
   R.gun.rotation.z = run > .5 ? -.7 - lean : m.ap - lean; R.gun.position.y = sp && st < 3 ? .66 : .47;
@@ -67949,7 +67977,7 @@ function trnRows(k, d, pvp, swapRow) {
     return [['Mouse', 'Apontar. Fora da luneta o tiro sai disperso: o fuzil de precisão é fraco de perto'], ['W / S / A / D', 'Andar'], ['Z', 'Postura: em pé, agachado, deitado. Deitado e parado a mira para de oscilar em pouco mais de um segundo, e depois de ' + String(SNIPE.hide.still).replace('.', ',') + ' s você fica muito mais difícil de ver'],
       ['Botão direito', 'Luneta. A mira oscila com a respiração; as marcas abaixo do centro mostram a queda do projétil a cada 200 m'], ['Roda do mouse', 'Trocar o aumento da luneta, ' + a0.zoom.map(z => Math.round(62 / z) + '×').join(' e ')],
       ['Shift', 'Na luneta, prender o fôlego: a mira firma enquanto a tecla estiver apertada (o fôlego é infinito)'],
-      ['Botão esquerdo ou Espaço', a0.name + ': um tiro por aperto, ' + String(a0.rate).replace('.', ',') + ' s entre dois. Tiro na cabeça mata' + (a0.am ? '. Em veículo leve o projétil atinge a peça que estiver na linha: motor, rodas, tripulação' : '')],
+      ['Botão esquerdo', a0.name + ': um tiro por aperto, ' + String(a0.rate).replace('.', ',') + ' s entre dois. Tiro na cabeça mata' + (a0.am ? '. Em veículo leve o projétil atinge a peça que estiver na linha: motor, rodas, tripulação' : '')], ['Espaço', 'Pular, em pé'],
       ['R', 'Recarregar'], ['Q', 'Trocar entre ' + a0.name + ' e ' + a1.name], ['F / G', 'Granada de mão e granada de fumaça'], ['E', 'Embarcar no carro, caminhão ou blindado aliado ao lado; a bordo, desembarcar'],
       ['N', 'Obras, como os outros soldados: base de suprimento, trincheira, sacos de areia'], ['C', 'Trocar a visão: por cima do ombro e pelos olhos'], swapRow, esc];
   }
@@ -68688,7 +68716,7 @@ const LEGEND = {
     const [a0, a1] = d.arms;
     const rows = [['Mouse', 'Apontar. O soldado vira com a mira, e a cruz abre conforme a dispersão: menor agachado, deitado, parado e mirando'],
       ['W / S / A / D', 'Andar para onde a mira aponta e para os lados'], ['Shift', 'Correr, em pé (o fôlego é infinito)'], ['Z', 'Postura: em pé, agachado, deitado. Mais baixo é mais lento, mais preciso e mais difícil de ver e de acertar'],
-      ['Botão esquerdo ou Espaço', a0.name + (a0.auto ? ' (rajada enquanto apertado)' : ' (um tiro por aperto)')], ['Botão direito', 'Mirar pela alça: campo mais fechado e menos dispersão'], ['R', 'Recarregar']];
+      ['Botão esquerdo', a0.name + (a0.auto ? ' (rajada enquanto apertado)' : ' (um tiro por aperto)')], ['Espaço', 'Pular, em pé'], ['Botão direito', 'Mirar pela alça: campo mais fechado e menos dispersão'], ['R', 'Recarregar']];
     if (a1) rows.push(['Q', 'Trocar entre ' + a0.name + ' e ' + a1.name + (a1.lockT ? ' (segure o alvo na mira até travar e o disparo sai; sem linha de visada não trava: morro, prédio, árvores ou fumaça no caminho)' : ' (mire acima do alvo: a escada da mira marca as distâncias)')]);
     rows.push(['F', 'Granada de mão, uns 30 m'], ['G', 'Granada de fumaça: uma cortina pequena que esconde dos dois lados'], ['N', 'Obras: mostra o contorno à sua frente, verde onde dá para construir e vermelho com o motivo onde não dá. Cada toque passa para a próxima: base de suprimento, trincheira, sacos de areia, e fecha. O clique começa a obra (a base gasta o kit) e o botão direito cancela. Fique parado junto da obra para construir (' + BLD.time + ' s sozinho, mais rápido com outros soldados ao lado); um tiro recebido interrompe. Pronta, ela remunicia e repara soldados e veículos do seu lado a até ' + BLD.r + ' m e vira ponto de entrada. Encostado em uma base inimiga, N arma a carga de demolição, que explode em ' + BLD.charge.fuse + ' s'], ['Prédios', 'Entre pelas portas, pelos buracos abertos nas paredes e pelas janelas do térreo. A escada em caracol fica no canto dos fundos: dê a volta no pilar para subir ou descer; nos prédios de teto plano ela leva ao telhado. Parede de pé para tiros e esconde; janela e buraco deixam ver e atirar, nos dois sentidos. Canhão, foguete e a carga de demolição (N, de frente para a parede, a até ' + CITY.plant + ' m) abrem buracos; granada, morteiro, mina e IED quebram vidros e portas, furam madeira e parede fina e, repetidos no mesmo lugar ou dentro de um cômodo fechado, abrem a alvenaria; sem apoio as lajes caem andar por andar, e o prédio vem abaixo quando o térreo cede'], ['C', 'Trocar a visão: por cima do ombro e primeira pessoa'], o.swap, o.esc);
     rows.push(['I', 'Civil ao lado: segure ' + CIV.hold + ' s para recrutá-lo como miliciano do seu lado (no máximo ' + CIV.mil.each + ' de cada vez). Ele segue você e luta com uma arma velha; a IA também arma civis da vila que defende. Cada civil morto conta contra quem o matou, e uma vila onde o seu lado matou ' + CIV.rage.n + ' não arma mais ninguém para você']);
@@ -69388,6 +69416,9 @@ function radHud(P, u, ink, acc, y0) {
   const t = veh && !P.dep ? 'O · LEVANTAR A ANTENA (PARADO)' : veh && P.dep === .5 ? 'LEVANTANDO A ANTENA · ' + Math.max(0, Math.ceil(P.depT - S.t)) + ' s' : !r ? (P.in ? '' : 'RÁDIO') : r.w ? 'RÁDIO BLOQUEADO: ' + RAD.why[r.w].toUpperCase() : 'RÁDIO NO AR · ' + r.n + (r.n === 1 ? ' ENTRADA' : ' ENTRADAS') + (veh ? ' · O: RECOLHER' : P.rb ? ' · POUSADO' : ' · O: POUSAR');
   if (t) txt(t, cw / 2, ch * .79, 11 * u, r && r.w ? FOE : acc, 'center');
 }
+/* Space: a soldier on foot jumps with it; in a vehicle, a plane, flying a drone, on the drone's or the mortar's map, or in the air under a
+   parachute it is the trigger as before (paraHands opens the canopy on either) */
+const spaceJumps = () => { const P = S && S.my; return !!P && !!P.man && !P.in && !P.para && !S.dr && !S.dm && !S.mpp; };
 const KEYS = { ArrowUp: 'up', KeyW: 'up', ArrowDown: 'down', KeyS: 'down', ArrowLeft: 'left', KeyA: 'left', ArrowRight: 'right', KeyD: 'right', KeyQ: 'yawL', KeyE: 'yawR',
   ShiftLeft: 'thrUp', ShiftRight: 'thrUp', KeyZ: 'thrDown', Space: 'fire', KeyB: 'ordA', KeyJ: 'ordA', KeyV: 'ordB', KeyK: 'ordB', KeyF: 'flare', KeyX: 'brake',
   Digit1: 'lookL', Digit2: 'lookB', Digit3: 'lookR', Digit4: 'lookU', KeyT: 'fix', KeyG: 'smoke', KeyR: 'reload', KeyN: 'build', KeyL: 'mlock', KeyO: 'radio', KeyY: 'glock' };
@@ -69401,13 +69432,14 @@ addEventListener('keydown', e => {
   if (e.code === 'KeyC') { if (!e.repeat) nextCam(); return; }
   if (e.code === 'KeyR' && !(S.my && S.my.man)) { if (!e.repeat) zoomBy(0); return; }
   if (e.code === 'KeyM') { if (!e.repeat) mapKey(); return; }
+  if (e.code === 'Space' && (spaceJumps() || S.spJ)) { if (e.repeat && !S.spJ) S.input.fire = false; S.input.jump = S.spJ = true; e.preventDefault(); return; }   // on foot Space jumps and never fires (cf-movimento): the trigger is the left button
   const k = KEYS[e.code]; if (!k) return;
   S.input[k] = true; e.preventDefault();
 });
-addEventListener('keyup', e => { const k = KEYS[e.code]; if (k && S) S.input[k] = false; });
+addEventListener('keyup', e => { if (e.code === 'Space' && S && S.spJ) { S.input.jump = S.spJ = false; return; } const k = KEYS[e.code]; if (k && S) S.input[k] = false; });   // a Space that jumped lets go of the jump, not of the left button's fire
 addEventListener('keydown', e => { if (e.code === 'KeyI' && playMode === 'play' && !GV.on && S && S.my && S.my.man && !/INPUT|TEXTAREA/.test(e.target.tagName || '')) S.input.recruit = true; });   // hold I beside a civilian to recruit him
 addEventListener('keyup', e => { if (e.code === 'KeyI' && S) S.input.recruit = false; });
-addEventListener('blur', () => { if (S) S.input = {}; });
+addEventListener('blur', () => { if (S) { S.input = {}; S.spJ = false; } });
 document.addEventListener('visibilitychange', () => { if (document.hidden) setPause(true); });
 /* mouse aim: movement only counts while the pointer is locked to the canvas; the sim reads it from S.input */
 cv.addEventListener('mousedown', e => {
@@ -73940,8 +73972,9 @@ function packWeapon(s, m) {
 function packHold(w, at, rz) { w.position.set(at[0], at[1], at[2]); w.rotation.set(0, 0, rz); }
 function packPose(s, m, dt, fresh) {
   const st = m.dead ? 3 : m.st, mv = m.dead ? 0 : Math.hypot(m.v.x, m.v.z), a = m.arms && m.arms[m.w], fire = !!a && S.t - a.t < .3, rl = !!a && a.rl > 0;
-  const nm = st === 3 ? 'death' : st === 2 ? 'aim' : mv > 3.2 || (m.run && mv > .5) ? (fire && s.act.runfire ? 'runfire' : 'run') : mv > .3 ? 'walk' : m.civ ? 'idle' : fire ? 'fire' : rl ? 'idle' : st === 1 || m.ap ? 'aim' : 'idle';
-  packPlay(s, nm, fresh ? 0 : .18);
+  const air = st === 0 && m.jh > 0, nm = st === 3 ? 'death' : st === 2 || air ? 'aim' : mv > MAN.walk * 1.3 || (m.run && mv > .5) ? (fire && s.act.runfire ? 'runfire' : 'run') : mv > .3 ? 'walk' : m.civ ? 'idle' : fire ? 'fire' : rl ? 'idle' : st === 1 || m.ap ? 'aim' : 'idle';
+  packPlay(s, nm, fresh ? 0 : air ? .08 : .18);
+  if (s.cur && (nm === 'run' || nm === 'runfire' || nm === 'walk') && !m.civ) s.cur.timeScale = clamp(Math.pow(mv / MOVE.clip[nm === 'walk' ? 0 : 1], .75), .5, 2); else if (s.cur) s.cur.timeScale = 1;   // the legs' cycle by the pace (cf-movimento): quicker, and the rest a longer stride
   if (fresh && nm === 'death' && s.act.death) s.act.death.time = s.act.death.getClip().duration;
   if (!s.rest) s.rest = s.legs.map(b => b && b.quaternion.clone());
   s.legs.forEach((b, i) => b && b.quaternion.copy(s.rest[i]));   // a bone no clip moves would keep the bend of the frame before
@@ -73949,6 +73982,7 @@ function packPose(s, m, dt, fresh) {
   const k = MAN.sc * 1.85 / s.h, R = s.root, T = s.tilt;
   R.position.set(m.x, m.y, m.z); R.rotation.set(0, m.h, 0); R.scale.setScalar(k);
   T.rotation.set(0, 0, st === 2 ? -Math.PI / 2 : 0); T.position.set(st === 2 ? -.95 : 0, st === 2 ? .18 : st === 1 ? -.42 : 0, 0);
+  if (air) { const [ul, ur, ll, lr] = s.legs; for (const b of [ul, ur]) if (b) b.quaternion.multiply(PMQ.setFromAxisAngle(PMX, MOVE.tuck[0])); for (const b of [ll, lr]) if (b) b.quaternion.multiply(PMQ.setFromAxisAngle(PMX, MOVE.tuck[1])); }   // in a jump the knees come up (MOVE.tuck)
   if (st === 1) { const [ul, ur, ll, lr] = s.legs; for (const b of [ul, ur]) if (b) b.quaternion.multiply(PMQ.setFromAxisAngle(PMX, -1.25)); for (const b of [ll, lr]) if (b) b.quaternion.multiply(PMQ.setFromAxisAngle(PMX, 1.9)); }
   const w = packWeapon(s, m);
   if (w) {
